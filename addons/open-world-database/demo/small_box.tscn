@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://cnlgfasqpoub2"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_7amvq"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_7amvq"]
+radial_segments = 12
+rings = 6
+
+[node name="SmallBox" type="Node3D"]
+
+[node name="cube" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_7amvq")
+
+[node name="sphere" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.468545, 0)
+mesh = SubResource("SphereMesh_7amvq")

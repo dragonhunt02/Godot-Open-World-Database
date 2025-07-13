@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://cvcbrskxmmt33"]
+
+[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="1_xd1a7"]
+
+[node name="chunk_-3_0_-1" type="Node3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0, -8)
+metadata/chunk_node = true
+metadata/chunk_position = Vector3i(-3, 0, -1)
+
+[node name="SmallBox8" type="Node3D" parent="." instance=ExtResource("1_xd1a7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.44815, 0, 1.87724)
+
+[node name="SmallBox10" type="Node3D" parent="." instance=ExtResource("1_xd1a7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.16418, 0, 4.41927)

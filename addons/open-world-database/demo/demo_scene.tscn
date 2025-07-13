@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://bjfrcs1obghq6"]
+
+[ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
+
+[node name="DemoScene" type="Node3D"]
+
+[node name="OpenWorldDatabase" type="Node" parent="."]
+script = ExtResource("1_v2w8i")
+chunk_range = 2
+hide_loaded_chunks = null
+metadata/_custom_type_script = "uid://b46e3mat8dx5"
