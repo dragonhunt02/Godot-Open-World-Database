@@ -29,6 +29,7 @@ var is_loading = false
 var next_node_check: int = INF
 
 @export_tool_button("Save Database", "save") var save_action = save_database
+@export_tool_button("Load Database", "load") var load_action = load_database
 
 var owdb_path: String
 
@@ -38,18 +39,19 @@ var chunk_size: float = 16.0
 
 # Component instances
 var node_monitor: NodeMonitor
-var database_exporter: DatabaseExporter
+var database: Database
 
 func _ready():
 	_initialize_components()
 	_setup_center_node()
 	_connect_signals()
 	call_deferred("_start_monitoring")
+	call_deferred("load_database")  # Auto-load on ready
 
 func _initialize_components():
 	node_monitor = NodeMonitor.new()
 	node_monitor.debug_enabled = debug_enabled
-	database_exporter = DatabaseExporter.new(self)
+	database = Database.new(self)
 
 func _setup_center_node():
 	current_center_node = center_node
@@ -232,5 +234,10 @@ func update_node_data():
 	
 	print("Node data updated!")
 
+# Update the save_database method:
 func save_database():
-	database_exporter.save_database()
+	database.save_database()
+
+# Add load_database method:
+func load_database():
+	database.load_database()

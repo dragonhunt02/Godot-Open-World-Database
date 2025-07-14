@@ -1,7 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://bjfrcs1obghq6"]
+[gd_scene load_steps=2 format=3 uid="uid://bjfrcs1obghq6"]
 
 [ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
-[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_v2w8i"]
 
 [node name="DemoScene" type="Node3D"]
 
@@ -9,52 +8,3 @@
 script = ExtResource("1_v2w8i")
 debug_enabled = true
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
-
-[node name="SmallBox-1752527801588_2848" parent="OpenWorldDatabase" instance=ExtResource("2_v2w8i")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.687365, 0, 0.607255)
-metadata/_owd_uid = "SmallBox-1752527801588_2848"
-metadata/_owd_transform = {
-"position": Vector3(0.687365, 0, 0.607255),
-"rotation": Vector3(0, 0, 0),
-"scale": Vector3(1, 1, 1),
-"size": 0.5
-}
-metadata/_owd_custom_properties = {
-"test": "Change me"
-}
-
-[node name="SmallBox-1752527807422_2915" parent="OpenWorldDatabase/SmallBox-1752527801588_2848" instance=ExtResource("2_v2w8i")]
-metadata/_owd_uid = "SmallBox-1752527807422_2915"
-metadata/_owd_transform = {
-"position": Vector3(0.687365, 0, 0.607255),
-"rotation": Vector3(0, 0, 0),
-"scale": Vector3(1, 1, 1),
-"size": 0.5
-}
-metadata/_owd_custom_properties = {
-"test": "Change me"
-}
-
-[node name="SmallBox-1752527809798_3774" parent="OpenWorldDatabase/SmallBox-1752527801588_2848" instance=ExtResource("2_v2w8i")]
-metadata/_owd_uid = "SmallBox-1752527809798_3774"
-metadata/_owd_transform = {
-"position": Vector3(0.687365, 0, 0.607255),
-"rotation": Vector3(0, 0, 0),
-"scale": Vector3(1, 1, 1),
-"size": 0.5
-}
-metadata/_owd_custom_properties = {
-"test": "Change me"
-}
-
-[node name="SmallBox-1752527813021_2319" parent="OpenWorldDatabase" instance=ExtResource("2_v2w8i")]
-metadata/_owd_uid = "SmallBox-1752527813021_2319"
-metadata/_owd_transform = {
-"position": Vector3(0, 0, 0),
-"rotation": Vector3(0, 0, 0),
-"scale": Vector3(1, 1, 1),
-"size": 0.5
-}
-metadata/_owd_custom_properties = {
-"test": "Change me"
-}
