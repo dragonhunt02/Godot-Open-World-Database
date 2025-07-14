@@ -1,617 +1,489 @@
+#open_world_database.gd
 @tool
 extends Node
 class_name OpenWorldDatabase
 
-## A simplified database node for managing open world scenes with automatic chunking
+enum Size { SMALL, MEDIUM, LARGE, HUGE }
 
-signal chunk_loaded(chunk_position: Vector3i)
-signal chunk_unloaded(chunk_position: Vector3i)
+@export_group("Size Thresholds")
+@export var small_max_size: float = 0.5
+@export var medium_max_size: float = 4.0
+@export var large_max_size: float = 16.0
 
-@export var chunk_size = 8
-@export var chunk_range = 1
-@export var data_directory = "owd_data"
-@export var hide_loaded_chunks = true
-@export var auto_chunk_new_nodes = true
-@export var movement_poll_interval = 0.5  # How often to check for movement (seconds)
-@export var movement_settle_time = 1.0    # How long to wait after movement stops before moving node (seconds)
+@export_tool_button("Update Node Data", "update") var update_action = update_node_data
 
-var chunks_loaded: Dictionary = {}
-var camera_position_current = Vector3.ZERO
-var camera_chunk_current = Vector3i.ZERO
-var camera: Camera3D
-var scene_name: String
-var chunk_scene_path: String
-var tracked_nodes: Dictionary = {} # Track nodes and their last known chunk positions
-var node_last_positions: Dictionary = {} # Track last known positions for movement detection
-var node_movement_timers: Dictionary = {} # Track when nodes last moved
-var movement_check_timer: float = 0.0
+@export_group("Load Ranges")
+@export var small_load_range: float = 16.0
+@export var medium_load_range: float = 32.0
+@export var large_load_range: float = 128.0
+
+@export_group("Chunking")
+@export var chunk_load_range: int = 3
+@export var center_node: Node3D
+
+@export_group("Debug")
+@export var debug_enabled: bool = false
+
+var is_loading = false
+var next_node_check : int = INF
+
+@export_tool_button("Save Database", "save") var save_action = save_database
+
+var database: OpenWorldDatabaseFile
+var owdb_path: String
+var monitoring: Array[Node] = []
+var node_data_lookup: Dictionary = {} # uid -> NodeData
+var node_data_lookup_chunked: Dictionary = {} # [Size enum] -> [Vector2i] -> [Array of NodeData]
+
+# Add this as a class variable to cache baseline properties
+var baseline_properties: Dictionary = {}
+
 
 func _ready():
-	if not Engine.is_editor_hint():
+	# Cache baseline properties once
+	var baseline_node = Node3D.new()
+	for property in baseline_node.get_property_list():
+		#if not ["global_position", "global_rotation", "scale"].has(property.name):
+		baseline_properties[property.name] = true
+	baseline_properties["metadata/_owd_uid"] = true
+	baseline_properties["metadata/_owd_custom_properties"] = true
+	baseline_properties["metadata/_owd_transform"] = true
+	baseline_node.queue_free()
+	#print(baseline_properties)
+	deferred_child_monitoring(self)
+
+func _process(delta: float) -> void:
+	if next_node_check < Time.get_ticks_msec():
+		next_node_check = Time.get_ticks_msec() + 2000
+				
+		for node: Node3D in monitoring:
+			update_node_properties(node)
+
+func update_node_properties(node: Node3D):
+	var uid = node.get_meta("_owd_uid")
+	if not node_data_lookup.has(uid):
 		return
 	
-	for child in get_children():
-		child.free()
-		
-	_setup_chunking_system()
-	_find_camera()
+	var node_data = node_data_lookup[uid]
+	var updated_properties := false
+	var needs_rechunking := false
 	
-	# Connect to track new children
-	child_entered_tree.connect(_on_child_entered_tree)
-	
-	# Clear any non-chunk children on startup and move them to chunks
-	_process_existing_children()
-
-func _setup_chunking_system():
-	var edited_scene = get_tree().get_edited_scene_root()
-	if edited_scene and edited_scene.scene_file_path != "":
-		scene_name = edited_scene.scene_file_path.get_file().get_basename()
-		var scene_dir = edited_scene.scene_file_path.get_base_dir()
-		chunk_scene_path = scene_dir + "/" + data_directory + "/" + scene_name + "/"
-		DirAccess.make_dir_recursive_absolute(chunk_scene_path)
-
-func _find_camera():
-	camera = _find_camera_recursive(get_tree().root)
-
-func _find_camera_recursive(node: Node) -> Camera3D:
-	if node is Camera3D:
-		return node as Camera3D
-	for child in node.get_children():
-		var result = _find_camera_recursive(child)
-		if result:
-			return result
-	return null
-
-func _process_existing_children():
-	var children_to_move = []
-	for child in get_children():
-		if not child.has_meta("chunk_node") and child is Node3D:
-			children_to_move.append(child)
-	
-	for child in children_to_move:
-		_move_node_to_chunk(child)
-
-func _on_child_entered_tree(node: Node):
-	# Only handle direct children that are Node3D and not chunks
-	if node.get_parent() != self:
-		return
-	if node.has_meta("chunk_node"):
-		return
-	if not node is Node3D:
-		return
-	if not auto_chunk_new_nodes:
-		return
-	
-	# Move to appropriate chunk
-	call_deferred("_move_node_to_chunk", node)
-
-func _ensure_unique_name(node: Node, parent: Node) -> void:
-	"""Ensure the node has a unique name within its parent"""
-	var original_name = node.name
-	var base_name = original_name
-	var counter = 1
-	
-	# Check if name is already unique
-	if not parent.has_node(NodePath(original_name)):
-		return
-	
-	# Find a unique name by appending numbers
-	while parent.has_node(NodePath(base_name + str(counter))):
-		counter += 1
-	
-	node.name = base_name + str(counter)
-
-
-
-func _move_node_to_chunk(node: Node3D):
-	if not node or not is_instance_valid(node):
-		return
-	
-	if not node.is_inside_tree():
-		return
-	
-	var chunk_position = get_chunk_position(node.global_position)
-	var chunk_node = _find_or_create_chunk_with_content(chunk_position)
-	
-	if chunk_node and node.get_parent() == self:
-		# Store global transform
-		var global_transform = node.global_transform
-		
-		# Remove from current parent
-		remove_child(node)
-		
-		# Ensure unique name in the chunk before adding
-		_ensure_unique_name(node, chunk_node)
-		
-		# Move to chunk
-		chunk_node.add_child(node)
-		
-		# Restore global transform
-		call_deferred("_restore_global_transform", node, global_transform)
-		
-		# Set ownership
-		var scene_root = get_tree().get_edited_scene_root()
-		if scene_root:
-			node.owner = scene_root
-		
-		# Track this node (only if it's a scene instance)
-		if node.scene_file_path != "":
-			tracked_nodes[node] = chunk_position
-			call_deferred("_update_node_position_tracking", node)
-			node_movement_timers[node] = 0.0
-
-
-func _restore_global_transform(node: Node3D, transform: Transform3D):
-	if node and is_instance_valid(node) and node.is_inside_tree():
-		node.global_transform = transform
-
-func _update_node_position_tracking(node: Node3D):
-	if node and is_instance_valid(node) and node.is_inside_tree():
-		node_last_positions[node] = node.global_position
-
-func _process(delta):
-	if not Engine.is_editor_hint() or not camera:
-		return
-		
-	if camera.transform.origin != camera_position_current:
-		camera_position_current = camera.transform.origin
-		var new_camera_chunk = get_chunk_position(camera_position_current)
-		if new_camera_chunk != camera_chunk_current:
-			camera_chunk_current = new_camera_chunk
-			_update_chunks()
-	
-	# Update movement check timer
-	movement_check_timer += delta
-	if movement_check_timer >= movement_poll_interval:
-		movement_check_timer = 0.0
-		_check_node_movements(delta)
-
-func _check_node_movements(delta: float):
-	var nodes_to_remove = []
-	var nodes_to_move = []
-	
-	for node in tracked_nodes.keys():
-		# Clean up invalid nodes
-		if not is_instance_valid(node):
-			nodes_to_remove.append(node)
-			continue
-		
-		# Check if the node is still a Node3D and in the tree
-		if not node is Node3D:
-			nodes_to_remove.append(node)
-			continue
-			
-		if not node.is_inside_tree():
-			nodes_to_remove.append(node)
-			continue
-		
-		# Only track scene instances (nodes with scene_file_path)
-		if node.scene_file_path == "":
-			nodes_to_remove.append(node)
-			continue
-		
-		var node_3d = node as Node3D
-		var current_position = node_3d.global_position
-		var current_chunk = get_chunk_position(current_position)
-		var last_known_chunk = tracked_nodes[node]
-		
-		# Check if position has changed
-		var position_changed = false
-		if node in node_last_positions:
-			var last_position = node_last_positions[node]
-			position_changed = current_position.distance_to(last_position) > 0.01
-		else:
-			position_changed = true
-		
-		# Update movement timer
-		if position_changed:
-			node_movement_timers[node] = 0.0  # Reset timer - node is still moving
-			node_last_positions[node] = current_position
-		else:
-			# Node hasn't moved, increment timer
-			if node in node_movement_timers:
-				node_movement_timers[node] += movement_poll_interval
-			else:
-				node_movement_timers[node] = 0.0
-		
-		# Check if node has been stationary long enough AND is in a different chunk
-		if current_chunk != last_known_chunk:
-			if node in node_movement_timers and node_movement_timers[node] >= movement_settle_time:
-				nodes_to_move.append(node)
-	
-	# Clean up invalid nodes
-	for node in nodes_to_remove:
-		_cleanup_node_tracking(node)
-	
-	# Process movements for nodes that have settled
-	for node in nodes_to_move:
-		if is_instance_valid(node) and node.is_inside_tree():
-			var node_3d = node as Node3D
-			var current_chunk = get_chunk_position(node_3d.global_position)
-			var old_chunk = tracked_nodes[node]
-			_move_node_between_chunks(node_3d, old_chunk, current_chunk)
-
-func _cleanup_node_tracking(node: Node):
-	"""Clean up tracking data for a node"""
-	tracked_nodes.erase(node)
-	node_last_positions.erase(node)
-	node_movement_timers.erase(node)
-
-func _move_node_between_chunks(node: Node3D, old_chunk: Vector3i, new_chunk: Vector3i):
-	"""Move a node from one chunk to another"""
-	
-	# Safety checks
-	if not node or not is_instance_valid(node):
-		_cleanup_node_tracking(node)
-		return
-	
-	if not node.is_inside_tree():
-		_cleanup_node_tracking(node)
-		return
-	
-	# Find or create the new chunk
-	var new_chunk_node = _find_or_create_chunk_with_content(new_chunk)
-	if not new_chunk_node:
-		return
-	
-	# Store the current global transform
-	var global_transform = node.global_transform
-	var old_parent = node.get_parent()
-	
-	# Remove from old parent
-	if old_parent and old_parent != new_chunk_node:
-		old_parent.remove_child(node)
-	
-	# Ensure unique name in the new chunk before adding
-	_ensure_unique_name(node, new_chunk_node)
-	
-	# Add to new chunk
-	new_chunk_node.add_child(node)
-	
-	# Restore global transform
-	call_deferred("_restore_global_transform", node, global_transform)
-	
-	# Set ownership
-	var scene_root = get_tree().get_edited_scene_root()
-	if scene_root:
-		node.owner = scene_root
-		# Don't recursively set ownership for scene instances - preserve their internal structure
-		if node.scene_file_path == "":
-			_set_owner_recursive(node, scene_root)
-	
-	# Update tracking
-	tracked_nodes[node] = new_chunk
-	call_deferred("_update_node_position_tracking", node)
-	node_movement_timers[node] = 0.0  # Reset movement timer
-	
-	# Check if old chunk is now empty and should be cleaned up
-	call_deferred("_cleanup_empty_chunk", old_chunk)
-
-
-func _cleanup_empty_chunk(chunk_position: Vector3i):
-	var chunk_node = _find_chunk_node(chunk_position)
-	if chunk_node and chunk_node.get_child_count() == 0:
-		# Check if this chunk is within range, if not, unload it
-		var diff = camera_chunk_current - chunk_position
-		if abs(diff.x) > chunk_range or abs(diff.y) > chunk_range or abs(diff.z) > chunk_range:
-			var chunk_key = str(chunk_position)
-			chunks_loaded.erase(chunk_key)
-			
-			# Delete the chunk file if it exists since the chunk is now empty
-			_delete_chunk_file(chunk_position)
-			
-			chunk_node.queue_free()
-			
-func _delete_chunk_file(chunk_position: Vector3i):
-	"""Delete the chunk file for an empty chunk"""
-	var chunk_filename = _chunk_filename(chunk_position)
-	var chunk_path = chunk_scene_path + chunk_filename
-	
-	if FileAccess.file_exists(chunk_path):
-		DirAccess.remove_absolute(chunk_path)
-			
-func _update_chunks():
-	# Load nearby chunks that have content
-	for x in range(-chunk_range, chunk_range + 1):
-		for y in range(-chunk_range, chunk_range + 1):
-			for z in range(-chunk_range, chunk_range + 1):
-				var chunk_pos = camera_chunk_current + Vector3i(x, y, z)
-				_load_chunk_if_exists(chunk_pos)
-	
-	# Unload distant chunks
-	var chunks_to_unload = []
-	for chunk_key in chunks_loaded:
-		var chunk_pos: Vector3i = chunks_loaded[chunk_key]
-		var diff = camera_chunk_current - chunk_pos
-		if abs(diff.x) > chunk_range or abs(diff.y) > chunk_range or abs(diff.z) > chunk_range:
-			chunks_to_unload.append(chunk_key)
-	
-	for chunk_key in chunks_to_unload:
-		var chunk_pos = chunks_loaded[chunk_key]
-		_unload_chunk(chunk_pos)
-		chunks_loaded.erase(chunk_key)
-
-func _load_chunk_if_exists(chunk_position: Vector3i):
-	var chunk_key = str(chunk_position)
-	
-	# Check if already loaded
-	if chunk_key in chunks_loaded:
-		return
-	
-	# Only load if chunk file exists
-	var chunk_filename = _chunk_filename(chunk_position)
-	var chunk_path = chunk_scene_path + chunk_filename
-	
-	if FileAccess.file_exists(chunk_path):
-		_find_or_create_chunk(chunk_position)
-
-func get_chunk_position(position: Vector3) -> Vector3i:
-	return Vector3i(
-		floor(position.x / chunk_size),
-		floor(position.y / chunk_size),
-		floor(position.z / chunk_size)
-	)
-
-func _chunk_filename(chunk_position: Vector3i) -> String:
-	return "%d_%d_%d.tscn" % [chunk_position.x, chunk_position.y, chunk_position.z]
-
-func _find_or_create_chunk_with_content(chunk_position: Vector3i) -> Node3D:
-	"""Create a chunk only when there's content to put in it"""
-	var chunk_key = str(chunk_position)
-	
-	# Check if already loaded
-	if chunk_key in chunks_loaded:
-		return _find_chunk_node(chunk_position)
-	
-	# Create the chunk since we have content for it
-	return _find_or_create_chunk(chunk_position)
-
-func _find_or_create_chunk(chunk_position: Vector3i) -> Node3D:
-	var chunk_key = str(chunk_position)
-	
-	# Check if already loaded
-	if chunk_key in chunks_loaded:
-		return _find_chunk_node(chunk_position)
-	
-	# Load or create chunk
-	var chunk_filename = _chunk_filename(chunk_position)
-	var chunk_path = chunk_scene_path + chunk_filename
-	
-	var chunk_node: Node3D
-	
-	# Try to load existing chunk file
-	if FileAccess.file_exists(chunk_path):
-		var chunk_scene = load(chunk_path)
-		if chunk_scene:
-			chunk_node = chunk_scene.instantiate()
-			
-			# Track all loaded scene instances from this chunk
-			call_deferred("_track_loaded_chunk_scenes", chunk_node, chunk_position)
-		else:
-			chunk_node = Node3D.new()
-	else:
-		# Create empty chunk
-		chunk_node = Node3D.new()
-	
-	# Setup chunk node
-	chunk_node.name = "chunk_%d_%d_%d" % [chunk_position.x, chunk_position.y, chunk_position.z]
-	chunk_node.position = Vector3(chunk_position) * chunk_size
-	chunk_node.set_meta("chunk_node", true)
-	chunk_node.set_meta("chunk_position", chunk_position)
-	
-	if hide_loaded_chunks:
-		chunk_node.visible = false
-	
-	# Add to scene
-	add_child(chunk_node)
-	
-	# Set ownership
-	var scene_root = get_tree().get_edited_scene_root()
-	if scene_root:
-		chunk_node.owner = scene_root
-		_set_owner_recursive(chunk_node, scene_root)
-	
-	# Track the chunk
-	chunks_loaded[chunk_key] = chunk_position
-	
-	chunk_loaded.emit(chunk_position)
-	return chunk_node
-
-func _track_loaded_chunk_scenes(chunk_node: Node3D, chunk_position: Vector3i):
-	"""Track only scene instances that were loaded from a chunk file"""
-	for child in chunk_node.get_children():
-		if child is Node3D and child.scene_file_path != "":
-			tracked_nodes[child] = chunk_position
-			if child.is_inside_tree():
-				node_last_positions[child] = child.global_position
-			else:
-				node_last_positions[child] = Vector3.ZERO
-			node_movement_timers[child] = 0.0
-
-func _unload_chunk(chunk_position: Vector3i):
-	var chunk_node = _find_chunk_node(chunk_position)
-	if not chunk_node:
-		return
-	
-	# Remove tracking for scene instances in this chunk
-	var nodes_to_remove = []
-	for node in tracked_nodes.keys():
-		if is_instance_valid(node) and node.get_parent() == chunk_node and node.scene_file_path != "":
-			nodes_to_remove.append(node)
-	
-	for node in nodes_to_remove:
-		_cleanup_node_tracking(node)
-	
-	# Save chunk if it has content, otherwise delete the file
-	if chunk_node.get_child_count() > 0:
-		_save_chunk(chunk_node, chunk_position)
-	else:
-		# Chunk is empty, delete the file if it exists
-		_delete_chunk_file(chunk_position)
-	
-	# Remove chunk
-	chunk_node.queue_free()
-	
-	chunk_unloaded.emit(chunk_position)
-
-func _save_chunk(chunk_node: Node, chunk_position: Vector3i):
-	var chunk_filename = _chunk_filename(chunk_position)
-	var chunk_path = chunk_scene_path + chunk_filename
-	
-	# Remove old file
-	if FileAccess.file_exists(chunk_path):
-		DirAccess.remove_absolute(chunk_path)
-	
-	# Create packed scene
-	var packed_scene = PackedScene.new()
-	
-	# Temporarily change ownership for packing
-	var original_owner = chunk_node.owner
-	chunk_node.owner = null
-	_set_owner_recursive(chunk_node, chunk_node)
-	
-	# Pack and save
-	var result = packed_scene.pack(chunk_node)
-	if result == OK:
-		ResourceSaver.save(packed_scene, chunk_path)
-	
-	# Restore original ownership
-	chunk_node.owner = original_owner
-	var scene_root = get_tree().get_edited_scene_root()
-	if scene_root:
-		_set_owner_recursive(chunk_node, scene_root)
-
-func _set_owner_recursive(node: Node, owner: Node):
-	for child in node.get_children():
-		if child != owner:
-			child.owner = owner
-		# Only recurse if this child is NOT a scene instance
-		if child.get_child_count() > 0 and child.scene_file_path == "":
-			_set_owner_recursive(child, owner)
-
-func _find_chunk_node(chunk_position: Vector3i) -> Node3D:
-	for child in get_children():
-		if child.has_meta("chunk_node") and child.get_meta("chunk_position") == chunk_position:
-			return child as Node3D
-	return null
-
-## Public API
-
-func add_scene_to_world(scene_path: String, position: Vector3) -> Node:
-	"""Add a scene instance to the world at the specified position"""
-	var scene_resource = load(scene_path)
-	if not scene_resource:
-		return null
-	
-	var scene_instance = scene_resource.instantiate()
-	if not scene_instance is Node3D:
-		scene_instance.queue_free()
-		return null
-	
-	var scene_3d = scene_instance as Node3D
-	scene_3d.position = position
-	
-	# Find or create appropriate chunk
-	var chunk_position = get_chunk_position(position)
-	var chunk_node = _find_or_create_chunk_with_content(chunk_position)
-	
-	if chunk_node:
-		# Ensure unique name before adding to chunk
-		_ensure_unique_name(scene_instance, chunk_node)
-		
-		chunk_node.add_child(scene_instance)
-		
-		# Set ownership
-		var scene_root = get_tree().get_edited_scene_root()
-		if scene_root:
-			scene_instance.owner = scene_root
-			# Don't recursively set ownership for scene instances
-		
-		# Track the scene instance
-		tracked_nodes[scene_instance] = chunk_position
-		call_deferred("_update_node_position_tracking", scene_instance)
-		node_movement_timers[scene_instance] = 0.0
-		
-		return scene_instance
-	
-	return null
-
-
-func remove_scene_from_world(scene_node: Node):
-	"""Remove a scene instance from the world"""
-	if scene_node and is_instance_valid(scene_node):
-		# Stop tracking the node
-		_cleanup_node_tracking(scene_node)
-		
-		# Check if the parent chunk will be empty after removal
-		var parent_chunk = scene_node.get_parent()
-		if parent_chunk and parent_chunk.has_meta("chunk_node"):
-			var chunk_position = parent_chunk.get_meta("chunk_position")
-			scene_node.queue_free()
-			
-			# Clean up empty chunk after a frame
-			call_deferred("_cleanup_empty_chunk", chunk_position)
-		else:
-			scene_node.queue_free()
-
-func get_loaded_chunks() -> Array[Vector3i]:
-	var chunks: Array[Vector3i] = []
-	for chunk_pos in chunks_loaded.values():
-		chunks.append(chunk_pos)
-	return chunks
-
-func save_all_chunks():
-	"""Save all currently loaded chunks"""
-	for chunk_pos in chunks_loaded.values():
-		var chunk_node = _find_chunk_node(chunk_pos)
-		if chunk_node and chunk_node.get_child_count() > 0:
-			_save_chunk(chunk_node, chunk_pos)
-
-func set_chunks_visible(visible: bool):
-	"""Show/hide all loaded chunks"""
-	for child in get_children():
-		if child.has_meta("chunk_node"):
-			child.visible = visible
-
-func toggle_chunk_visibility():
-	"""Toggle visibility of all chunks"""
-	hide_loaded_chunks = !hide_loaded_chunks
-	set_chunks_visible(!hide_loaded_chunks)
-
-## Additional utility functions for better node movement detection
-
-func force_check_node_movements():
-	"""Manually trigger a check for node movements - useful for debugging"""
-	_check_node_movements(0.0)
-
-func get_node_chunk_position(node: Node3D) -> Vector3i:
-	"""Get the chunk position for a specific node"""
-	if not node.is_inside_tree():
-		return Vector3i.ZERO
-	return get_chunk_position(node.global_position)
-
-func is_node_tracked(node: Node) -> bool:
-	"""Check if a node is being tracked by the system"""
-	return node in tracked_nodes
-
-func get_tracked_nodes_count() -> int:
-	"""Get the number of nodes currently being tracked"""
-	return tracked_nodes.size()
-
-func get_node_movement_status(node: Node) -> Dictionary:
-	"""Get movement status for a tracked node"""
-	if not node in tracked_nodes:
-		return {}
-	
-	var status = {
-		"is_tracked": true,
-		"current_chunk": tracked_nodes[node],
-		"time_since_movement": node_movement_timers.get(node, 0.0),
-		"is_settled": node_movement_timers.get(node, 0.0) >= movement_settle_time
+	# Handle transform data
+	var current_transform := {
+		"position": node.global_position,
+		"rotation": node.global_rotation,
+		"scale": node.scale
 	}
 	
-	if node is Node3D and node.is_inside_tree():
-		status["actual_chunk"] = get_chunk_position(node.global_position)
-		status["needs_movement"] = status["actual_chunk"] != status["current_chunk"]
+	if node.has_meta("_owd_transform"):
+		var previous_transform = node.get_meta("_owd_transform")
+		
+		# Check if transform changed
+		for key in current_transform:
+			if current_transform[key] != previous_transform.get(key):
+				updated_properties = true
+				
+				# Check if position changed (needs re-chunking)
+				if key == "position":
+					needs_rechunking = true
+				break
+		
+		# Only calculate size if scale changed
+		if current_transform.scale != previous_transform.get("scale"):
+			current_transform["size"] = _calculate_node_size(node)
+			needs_rechunking = true  # Size change affects chunking
+		else:
+			current_transform["size"] = previous_transform.get("size", _calculate_node_size(node))
+	else:
+		current_transform["size"] = _calculate_node_size(node)
+		updated_properties = true
+		needs_rechunking = true
 	
-	return status
+	# Update memory data with current transform
+	if updated_properties:
+		node_data.position = current_transform.position
+		node_data.rotation = current_transform.rotation
+		node_data.scale = current_transform.scale
+		node_data.size = current_transform.size
+	
+	node.set_meta("_owd_transform", current_transform)
+	
+	# Handle custom properties (existing code)
+	var custom_properties := {}
+	
+	if node.has_meta("_owd_custom_properties"):
+		var previous_properties = node.get_meta("_owd_custom_properties")
+		
+		for prop_name in previous_properties.keys():
+			var current_value = node.get(prop_name)
+			var previous_value = previous_properties[prop_name]
+			
+			if current_value != previous_value:
+				updated_properties = true
+			
+			custom_properties[prop_name] = current_value
+	else:
+		for property in node.get_property_list():
+			var prop_name = property.name
+			
+			if baseline_properties.has(prop_name) or prop_name.begins_with("_") or not (property.usage & PROPERTY_USAGE_STORAGE):
+				continue
+			
+			custom_properties[prop_name] = node.get(prop_name)
+		
+		if not custom_properties.is_empty():
+			updated_properties = true
+	
+	if not custom_properties.is_empty():
+		node.set_meta("_owd_custom_properties", custom_properties)
+		node_data.properties = custom_properties
+	
+	# Handle re-chunking if position or size changed
+	if needs_rechunking and _is_top_level_node(node):
+		_rechunk_node(node_data)
+	
+	if updated_properties:
+		print(node.name," transform: ", current_transform, ", props: ", custom_properties)
+
+func _is_top_level_node(node: Node) -> bool:
+	var parent_node = node.get_parent()
+	return not (parent_node and parent_node.has_meta("_owd_uid"))
+
+func _rechunk_node(node_data: NodeData):
+	# Remove from old chunk
+	var old_size_enum = _get_size_enum(node_data.size)
+	var old_chunk_pos = _get_chunk_position(node_data.position)
+	
+	# Find and remove from old location
+	for size_enum in node_data_lookup_chunked:
+		for chunk_pos in node_data_lookup_chunked[size_enum]:
+			var nodes = node_data_lookup_chunked[size_enum][chunk_pos]
+			var index = nodes.find(node_data)
+			if index != -1:
+				nodes.remove_at(index)
+				break
+	
+	# Add to new chunk
+	var new_size_enum = _get_size_enum(node_data.size)
+	var new_chunk_pos = _get_chunk_position(node_data.position)
+	
+	if not node_data_lookup_chunked.has(new_size_enum):
+		node_data_lookup_chunked[new_size_enum] = {}
+	if not node_data_lookup_chunked[new_size_enum].has(new_chunk_pos):
+		node_data_lookup_chunked[new_size_enum][new_chunk_pos] = []
+	
+	node_data_lookup_chunked[new_size_enum][new_chunk_pos].append(node_data)
+
+
+
+func deferred_child_monitoring(node:Node):
+	node.child_entered_tree.connect(_on_child_entered_tree)
+	node.child_exiting_tree.connect(_on_child_exiting_tree)
+	
+func _on_child_entered_tree(node: Node):
+	if is_loading:
+		return
+	
+	if node.owner != null:
+		return
+		
+	if node.scene_file_path == "":
+		return
+		
+	if not node.has_method("get_global_position"):
+		print("OpenWorldDatabase: Node does not have a position - this will not be saved!")
+		return
+		
+	if node.has_meta("_owd_uid"):
+		#if not in node_data_lookup then needs to be re-added to node_data_lookup_chunked (must have been re-added to scene tree)
+		if !node_data_lookup.has(node.get_meta("_owd_uid")):
+			monitoring.append(node)
+			_add_to_memory(node)
+		return
+	
+	var uid = node.name + "-" + generate_uid()
+	node.set_meta("_owd_uid", uid)
+	node.name = uid
+	
+	if debug_enabled:
+		print("Added ", node.name)
+	
+	monitoring.append(node)
+	_add_to_memory(node)
+	
+	call_deferred("deferred_child_monitoring", node)
+	call_deferred("update_node_properties", node)
+	
+
+func _on_child_exiting_tree(node: Node):
+	if is_loading:
+		return
+		
+	if not node.has_meta("_owd_uid"):
+		return
+	
+	var index = monitoring.find(node)
+	if index == -1:
+		return
+	
+	monitoring.remove_at(index)
+	_remove_from_memory(node)
+	
+	if debug_enabled:
+		print("Removed ", node.name)
+
+func update_node_data():
+	print("Updating node data...")
+	
+	# Clear existing chunked data
+	node_data_lookup_chunked.clear()
+	
+	# Update all node data
+	for uid in node_data_lookup:
+		var node_data = node_data_lookup[uid]
+		var size_enum = _get_size_enum(node_data.size)
+		var chunk_pos = _get_chunk_position(node_data.position)
+		
+		# Only add top-level nodes to chunked lookup
+		var is_top_level = true
+		for parent_uid in node_data_lookup:
+			var parent_data = node_data_lookup[parent_uid]
+			if parent_data.children.has(node_data):
+				is_top_level = false
+				break
+		
+		if is_top_level:
+			if not node_data_lookup_chunked.has(size_enum):
+				node_data_lookup_chunked[size_enum] = {}
+			if not node_data_lookup_chunked[size_enum].has(chunk_pos):
+				node_data_lookup_chunked[size_enum][chunk_pos] = []
+			
+			node_data_lookup_chunked[size_enum][chunk_pos].append(node_data)
+	
+	print("Node data updated!")
+
+func save_database():
+	print("")
+	print("=== OPEN WORLD DATABASE EXPORT ===")
+	print("Total Nodes: ", node_data_lookup.size())
+	
+	# Output all top-level nodes (nodes without parents in the database)
+	var top_level_nodes: Array[NodeData] = []
+	
+	# Find all top-level nodes by checking node_data_lookup_chunked structure
+	for size_enum in node_data_lookup_chunked:
+		for chunk_pos in node_data_lookup_chunked[size_enum]:
+			for node_data in node_data_lookup_chunked[size_enum][chunk_pos]:
+				top_level_nodes.append(node_data)
+	
+	# Sort by UID for consistent output
+	top_level_nodes.sort_custom(func(a, b): return a.uid < b.uid)
+	
+	for node_data in top_level_nodes:
+		output_node_recursive(node_data, 0)
+	print("=== END DATABASE EXPORT ===")
+	
+	# Show chunked storage structure
+	print("")
+	print("=== CHUNKED STORAGE STRUCTURE ===")
+	
+	# Sort chunk sizes for consistent output
+	var sorted_sizes = node_data_lookup_chunked.keys()
+	sorted_sizes.sort()
+	
+	for size_enum in sorted_sizes:
+		print("Chunk Size: ", size_enum)
+		
+		# Sort chunk positions for consistent output
+		var sorted_positions = node_data_lookup_chunked[size_enum].keys()
+		sorted_positions.sort_custom(func(a, b): 
+			if a.x != b.x: return a.x < b.x
+			if a.y != b.y: return a.y < b.y
+			return a.z < b.z
+		)
+		
+		for chunk_pos in sorted_positions:
+			print("  Chunk Position: ", chunk_pos)
+			var nodes_in_chunk = node_data_lookup_chunked[size_enum][chunk_pos]
+			
+			# Sort nodes by UID for consistent output
+			var sorted_nodes = nodes_in_chunk.duplicate()
+			sorted_nodes.sort_custom(func(a, b): return a.uid < b.uid)
+			
+			for node_data in sorted_nodes:
+				output_chunked_node_recursive(node_data, 4)
+		print("")
+	
+	print("=== END CHUNKED STORAGE STRUCTURE ===")
+
+# Add this new helper function to recursively output nodes with their children
+func output_chunked_node_recursive(node_data: NodeData, indent_level: int):
+	var indent = " ".repeat(indent_level)
+	
+	print(indent + "Node: ", node_data.uid)
+	print(indent + "  Position: ", node_data.position)
+	print(indent + "  Rotation: ", node_data.rotation)
+	print(indent + "  Scale: ", node_data.scale)
+	print(indent + "  Size: ", node_data.size)
+	if node_data.properties.size() > 0:
+		print(indent + "  Properties: ", node_data.properties)
+	else:
+		print(indent + "  Properties: (empty)")
+	
+	# Output children if they exist
+	if node_data.children.size() > 0:
+		print(indent + "  Children:")
+		
+		# Sort children by UID for consistent output
+		var sorted_children = node_data.children.duplicate()
+		sorted_children.sort_custom(func(a, b): return a.uid < b.uid)
+		
+		for child in sorted_children:
+			output_chunked_node_recursive(child, indent_level + 4)
+	
+	print("")
+
+
+
+func output_node_recursive(node_data: NodeData, depth: int):
+	var indent = "\t".repeat(depth)
+	var size_name = str(_get_size_enum(node_data.size))
+	var chunk = _get_chunk_position(node_data.position)
+	
+	var line = indent + node_data.uid + ":\"" + node_data.scene + "\":" + str(node_data.position.x) + "," + str(node_data.position.y) + "," + str(node_data.position.z) + ":" + str(node_data.size) + ":" + size_name + ":" + str(chunk.x) + "," + str(chunk.y)
+	
+	if node_data.properties.size() > 0:
+		line += ":" + str(node_data.properties)
+	
+	print(line)
+	
+	if node_data.children.size() > 0:
+		# Sort children by UID for consistent output
+		var sorted_children = node_data.children.duplicate()
+		sorted_children.sort_custom(func(a, b): return a.uid < b.uid)
+		
+		for child in sorted_children:
+			output_node_recursive(child, depth + 1)
+
+	
+func generate_uid() -> String:
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	return str(Time.get_unix_time_from_system()).replace(".", "")+ "_" + str(rng.randi_range(1000,9999))
+
+func _add_to_memory(node: Node3D):
+	var node_data = NodeData.new()
+	node_data.uid = node.get_meta("_owd_uid")
+	node_data.scene = node.scene_file_path
+	"""
+	node_data.position = node.get_global_position()
+	node_data.rotation = node.rotation
+	node_data.scale = node.scale
+	node_data.size = _calculate_node_size(node)
+	"""
+	node_data_lookup[node_data.uid] = node_data
+	
+	var parent_node = node.get_parent()
+	if parent_node and parent_node.has_meta("_owd_uid"):
+		# Add as child to parent's NodeData
+		var parent_uid = parent_node.get_meta("_owd_uid")
+		if node_data_lookup.has(parent_uid):
+			node_data_lookup[parent_uid].children.append(node_data)
+	"""
+	else:
+		# Add to top-level node_data_lookup_chunked structure
+		var size_enum = _get_size_enum(node_data.size)
+		var chunk_pos = _get_chunk_position(node_data.position)
+		
+		if not node_data_lookup_chunked.has(size_enum):
+			node_data_lookup_chunked[size_enum] = {}
+		if not node_data_lookup_chunked[size_enum].has(chunk_pos):
+			node_data_lookup_chunked[size_enum][chunk_pos] = []
+		
+		node_data_lookup_chunked[size_enum][chunk_pos].append(node_data)
+	"""
+
+func _remove_from_memory(node: Node):
+	var uid = node.get_meta("_owd_uid")
+	
+	if not node_data_lookup.has(uid):
+		return
+	
+	var node_data = node_data_lookup[uid]
+	var parent_node = node.get_parent()
+	
+	if parent_node and parent_node.has_meta("_owd_uid"):
+		# Remove from parent's children array
+		var parent_uid = parent_node.get_meta("_owd_uid")
+		if node_data_lookup.has(parent_uid):
+			var parent_data = node_data_lookup[parent_uid]
+			var index = parent_data.children.find(node_data)
+			if index != -1:
+				parent_data.children.remove_at(index)
+	else:
+		# Remove from top-level node_data_lookup_chunked structure
+		var size_enum = _get_size_enum(node_data.size)
+		var chunk_pos = _get_chunk_position(node_data.position)
+		
+		if node_data_lookup_chunked.has(size_enum) and node_data_lookup_chunked[size_enum].has(chunk_pos):
+			var nodes = node_data_lookup_chunked[size_enum][chunk_pos]
+			var index = nodes.find(node_data)
+			if index != -1:
+				nodes.remove_at(index)
+	
+	node_data_lookup.erase(uid)
+	
+
+
+func _get_size_enum(size: float) -> Size:
+	if size <= small_max_size:
+		return Size.SMALL
+	elif size <= medium_max_size:
+		return Size.MEDIUM
+	elif size <= large_max_size:
+		return Size.LARGE
+	else:
+		return Size.HUGE
+		
+func _calculate_node_size(node: Node3D) -> float:
+	var aabb = get_node_aabb(node, false)
+	var size = aabb.size
+	return max(size.x, max(size.y, size.z))
+
+func _get_chunk_position(pos: Vector3) -> Vector2i:
+	var chunk_size = 16.0
+	return Vector2i(
+		int(floor(pos.x / chunk_size)),
+		int(floor(pos.z / chunk_size))
+	)
+	
+func get_node_aabb(node : Node, exclude_top_level_transform: bool = true) -> AABB:
+	var bounds : AABB = AABB()
+
+	if node.is_queued_for_deletion():
+		return bounds
+
+	if node is VisualInstance3D:
+		bounds = node.get_aabb();
+
+	for child in node.get_children():
+		var child_bounds : AABB = get_node_aabb(child, false)
+		if bounds.size == Vector3.ZERO:
+			bounds = child_bounds
+		else:
+			bounds = bounds.merge(child_bounds)
+
+	if !exclude_top_level_transform:
+		bounds = node.transform * bounds
+
+	return bounds
+	
+class NodeData:
+	var uid: String
+	var scene: String
+	var position: Vector3
+	var rotation: Vector3
+	var scale: Vector3
+	var size: float
+	var properties: Dictionary
+	var children: Array[NodeData] = []

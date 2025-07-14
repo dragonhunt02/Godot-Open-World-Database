@@ -6,6 +6,5 @@
 
 [node name="OpenWorldDatabase" type="Node" parent="."]
 script = ExtResource("1_v2w8i")
-chunk_range = 2
-hide_loaded_chunks = null
+debug_enabled = true
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
