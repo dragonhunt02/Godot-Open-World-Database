@@ -10,11 +10,10 @@ var node_data_lookup: Dictionary = {} # uid -> NodeData
 var monitoring: Array[Node] = []
 var baseline_properties: Dictionary = {}
 var debug_enabled: bool = false
+var loaded_scenes: Dictionary = {} # uid -> Node
 
 func _init():
-	_cache_baseline_properties()
-
-func _cache_baseline_properties():
+	# Cache baseline properties
 	var baseline_node = Node3D.new()
 	for property in baseline_node.get_property_list():
 		baseline_properties[property.name] = true
@@ -23,16 +22,7 @@ func _cache_baseline_properties():
 	baseline_properties["metadata/_owd_transform"] = true
 	baseline_node.queue_free()
 
-func add_node_to_monitoring(node: Node):
-	if not monitoring.has(node):
-		monitoring.append(node)
-
-func remove_node_from_monitoring(node: Node):
-	var index = monitoring.find(node)
-	if index != -1:
-		monitoring.remove_at(index)
-
-func update_node_properties(node: Node3D):
+func update_node_properties(node: Node3D, force = false):
 	var uid = node.get_meta("_owd_uid")
 	if not node_data_lookup.has(uid):
 		return
@@ -40,6 +30,32 @@ func update_node_properties(node: Node3D):
 	var node_data = node_data_lookup[uid]
 	var updated_properties := false
 	var needs_rechunking := false
+	
+	# Check if parent has changed
+	var current_parent = node.get_parent()
+	var current_parent_uid = ""
+	if current_parent and current_parent.has_meta("_owd_uid"):
+		current_parent_uid = current_parent.get_meta("_owd_uid")
+	
+	if node_data.parent_uid != current_parent_uid:
+		# Remove from old parent's children
+		if node_data.parent_uid != "" and node_data_lookup.has(node_data.parent_uid):
+			var old_parent_data = node_data_lookup[node_data.parent_uid]
+			var index = old_parent_data.children.find(node_data)
+			if index != -1:
+				old_parent_data.children.remove_at(index)
+		
+		# Add to new parent's children
+		if current_parent_uid != "" and node_data_lookup.has(current_parent_uid):
+			var new_parent_data = node_data_lookup[current_parent_uid]
+			new_parent_data.children.append(node_data)
+		
+		node_data.parent_uid = current_parent_uid
+		updated_properties = true
+		
+		# Parent change affects chunking for top-level nodes
+		if NodeUtils.is_top_level_node(node):
+			needs_rechunking = true
 	
 	# Handle transform data
 	var current_transform := {
@@ -72,6 +88,9 @@ func update_node_properties(node: Node3D):
 		updated_properties = true
 		needs_rechunking = true
 	
+	if force:
+		updated_properties = true
+		
 	# Update memory data with current transform
 	if updated_properties:
 		node_data.position = current_transform.position
@@ -138,6 +157,32 @@ func add_to_memory(node: Node3D) -> NodeData:
 	
 	return node_data
 
+func get_all_monitored_nodes() -> Array[Node]:
+	return monitoring.duplicate()
+
+func is_scene_loaded(uid: String) -> bool:
+	return loaded_scenes.has(uid)
+
+func get_loaded_scene(uid: String) -> Node:
+	return loaded_scenes.get(uid, null)
+
+func add_node_to_monitoring(node: Node):
+	if not monitoring.has(node):
+		monitoring.append(node)
+		
+		# Track loaded scenes
+		if node.has_meta("_owd_uid"):
+			loaded_scenes[node.get_meta("_owd_uid")] = node
+
+func remove_node_from_monitoring(node: Node):
+	var index = monitoring.find(node)
+	if index != -1:
+		monitoring.remove_at(index)
+		
+		# Remove from loaded scenes
+		if node.has_meta("_owd_uid"):
+			loaded_scenes.erase(node.get_meta("_owd_uid"))
+
 func remove_from_memory(node: Node) -> NodeData:
 	var uid = node.get_meta("_owd_uid")
 	
@@ -146,19 +191,19 @@ func remove_from_memory(node: Node) -> NodeData:
 	
 	var node_data = node_data_lookup[uid]
 	
-	# Remove from parent's children array using parent_uid
+	# Remove from parent's children array
 	if node_data.parent_uid != "" and node_data_lookup.has(node_data.parent_uid):
 		var parent_data = node_data_lookup[node_data.parent_uid]
 		var index = parent_data.children.find(node_data)
 		if index != -1:
 			parent_data.children.remove_at(index)
 	
-	# Clear parent_uid references in all children
+	# Update parent_uid in all children to empty (they become orphaned)
 	for child in node_data.children:
 		child.parent_uid = ""
 	
+	# Remove from node_data_lookup completely when node is removed from scene
 	node_data_lookup.erase(uid)
+	loaded_scenes.erase(uid)
+	
 	return node_data
-
-func get_all_monitored_nodes() -> Array[Node]:
-	return monitoring.duplicate()
