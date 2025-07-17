@@ -3,6 +3,12 @@
 extends RefCounted
 class_name NodeUtils
 
+static func remove_children(node:Node):
+	var children = node.get_children()
+	for child in children:
+		child.free()
+
+
 static func generate_uid() -> String:
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
@@ -10,9 +16,6 @@ static func generate_uid() -> String:
 
 static func get_node_aabb(node: Node, exclude_top_level_transform: bool = true) -> AABB:
 	var bounds: AABB = AABB()
-
-	if node.is_queued_for_deletion():
-		return bounds
 
 	if node is VisualInstance3D:
 		bounds = node.get_aabb()

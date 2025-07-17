@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://bjfrcs1obghq6"]
+[gd_scene load_steps=3 format=3 uid="uid://bjfrcs1obghq6"]
 
 [ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
+[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_v2w8i"]
 
 [node name="DemoScene" type="Node3D"]
 
@@ -8,3 +9,8 @@
 script = ExtResource("1_v2w8i")
 debug_enabled = true
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
+
+[node name="SmallBox-1752777105566_2284" parent="OpenWorldDatabase" instance=ExtResource("2_v2w8i")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.403813, 0, 0.985037)
+test = "woohoo"
+metadata/_owd_uid = &"SmallBox-1752777105566_2284"

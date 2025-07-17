@@ -1,9 +1,13 @@
-[gd_scene load_steps=4 format=3 uid="uid://cnlgfasqpoub2"]
+[gd_scene load_steps=5 format=3 uid="uid://cnlgfasqpoub2"]
 
 [ext_resource type="Script" uid="uid://dampo4awcnnfn" path="res://addons/open-world-database/demo/small_box.gd" id="1_q3s3a"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_7amvq"]
 size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q3s3a"]
+metallic = 1.0
+roughness = 0.3
 
 [sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_7amvq"]
 points = PackedVector3Array(-0.25, -0.25, -0.25, 0.25, 0.25, 0.25, 0.25, -0.25, 0.25, 0.25, 0.25, -0.25, -0.25, 0.25, 0.25, 0.25, -0.25, -0.25, -0.25, -0.25, 0.25, -0.25, 0.25, -0.25)
@@ -13,6 +17,7 @@ script = ExtResource("1_q3s3a")
 
 [node name="cube" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_7amvq")
+surface_material_override/0 = SubResource("StandardMaterial3D_q3s3a")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="cube"]
 
