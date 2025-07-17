@@ -1,0 +1,4 @@
+SmallBox-1752791225043_3129|"res://addons/open-world-database/demo/small_box.tscn"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"parent 1"}
+SmallBox-1752791234688_8001|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,0.01395001448691,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"child 1"}
+SmallBox-1752791238063_8532|"res://addons/open-world-database/demo/small_box.tscn"|5.35591125488281,0.00000002980232,7.13631629943848|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"distant 1"}
+SmallBox-1752791241341_4381|"res://addons/open-world-database/demo/small_box.tscn"|1.08271598815918,0.0,1.25117683410645|0.0,0.0,0.0|1.0,1.0,1.0|0.40000009536743|{"test":"alone 1"}

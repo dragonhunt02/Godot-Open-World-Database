@@ -3,10 +3,10 @@
 extends RefCounted
 class_name Database
 
-var open_world_database: OpenWorldDatabase
+var owdb: OpenWorldDatabase
 
-func _init(owdb: OpenWorldDatabase):
-	open_world_database = owdb
+func _init(open_world_database: OpenWorldDatabase):
+	owdb = open_world_database
 
 func get_database_path() -> String:
 	var scene_path = EditorInterface.get_edited_scene_root().scene_file_path
@@ -20,167 +20,154 @@ func save_database():
 		print("Error: Scene must be saved before saving database")
 		return
 	
+	# First, update all loaded nodes
+	var all_nodes = owdb.get_all_owd_nodes()
+	for node in all_nodes:
+		owdb.node_monitor.update_stored_node(node)
+	
+	# Now save everything from stored_nodes
 	var file = FileAccess.open(db_path, FileAccess.WRITE)
 	if not file:
-		print("Error: Could not create database file at ", db_path)
+		print("Error: Could not create database file")
 		return
 	
-	print("Saving database to: ", db_path)
+	# Get top-level nodes
+	var top_level_uids = []
+	for uid in owdb.node_monitor.stored_nodes:
+		var info = owdb.node_monitor.stored_nodes[uid]
+		if info.parent_uid == "":
+			top_level_uids.append(uid)
 	
-	var top_level_nodes = open_world_database.get_top_level_nodes()
-	top_level_nodes.sort_custom(func(a, b): return a.uid < b.uid)
+	top_level_uids.sort()
 	
-	for node_data in top_level_nodes:
-		_write_node_recursive(file, node_data, 0)
+	for uid in top_level_uids:
+		_write_node_recursive(file, uid, 0)
 	
 	file.close()
 	print("Database saved successfully!")
 
-func _write_node_recursive(file: FileAccess, node_data: NodeData, depth: int):
-	var indent = "\t".repeat(depth)
-	var properties_str = "{}"
+func _write_node_recursive(file: FileAccess, uid: String, depth: int):
+	var info = owdb.node_monitor.stored_nodes.get(uid, {})
+	if info.is_empty():
+		return
 	
-	if node_data.properties.size() > 0:
-		properties_str = JSON.stringify(node_data.properties)
+	var indent = "\t".repeat(depth)
+	var props_str = "{}"
+	if info.properties.size() > 0:
+		props_str = JSON.stringify(info.properties)
 	
 	var line = "%s%s|\"%s\"|%s,%s,%s|%s,%s,%s|%s,%s,%s|%s|%s" % [
-		indent,
-		node_data.uid,
-		node_data.scene,
-		node_data.position.x, node_data.position.y, node_data.position.z,
-		node_data.rotation.x, node_data.rotation.y, node_data.rotation.z,
-		node_data.scale.x, node_data.scale.y, node_data.scale.z,
-		node_data.size,
-		properties_str
+		indent, uid, info.scene,
+		info.position.x, info.position.y, info.position.z,
+		info.rotation.x, info.rotation.y, info.rotation.z,
+		info.scale.x, info.scale.y, info.scale.z,
+		info.size, props_str
 	]
 	
 	file.store_line(line)
 	
-	# Sort children by UID for consistent output
-	var sorted_children = node_data.children.duplicate()
-	sorted_children.sort_custom(func(a, b): return a.uid < b.uid)
+	# Write children
+	var child_uids = []
+	for child_uid in owdb.node_monitor.stored_nodes:
+		var child_info = owdb.node_monitor.stored_nodes[child_uid]
+		if child_info.parent_uid == uid:
+			child_uids.append(child_uid)
 	
-	for child in sorted_children:
-		_write_node_recursive(file, child, depth + 1)
-
+	child_uids.sort()
+	for child_uid in child_uids:
+		_write_node_recursive(file, child_uid, depth + 1)
 
 func load_database():
 	var db_path = get_database_path()
-	if db_path == "":
-		print("Error: Scene must be saved before loading database")
-		return
-	
-	if not FileAccess.file_exists(db_path):
-		print("No database file found at ", db_path)
+	if db_path == "" or not FileAccess.file_exists(db_path):
 		return
 	
 	var file = FileAccess.open(db_path, FileAccess.READ)
 	if not file:
-		print("Error: Could not open database file at ", db_path)
 		return
 	
-	print("Loading database from: ", db_path)
-	open_world_database.is_loading = true
+	owdb.node_monitor.stored_nodes.clear()
+	owdb.chunk_lookup.clear()
 	
-	# Clear existing data
-	open_world_database.node_data_lookup_chunked.clear()
-	open_world_database.node_monitor.node_data_lookup.clear()
-	open_world_database.node_monitor.monitoring.clear()
-	
-	# Parse the file
-	var node_stack: Array[NodeData] = []
-	var depth_stack: Array[int] = []
+	var node_stack = []
+	var depth_stack = []
 	
 	while not file.eof_reached():
-		var line = file.get_line().strip_edges(false, true)  # Keep leading spaces
+		var line = file.get_line()
 		if line == "":
 			continue
 		
-		var depth = _get_line_depth(line)
-		var clean_line = line.strip_edges()
+		var depth = 0
+		while depth < line.length() and line[depth] == "\t":
+			depth += 1
 		
-		var node_data = _parse_node_line(clean_line)
-		if not node_data:
+		var clean_line = line.strip_edges()
+		var info = _parse_line(clean_line)
+		if not info:
 			continue
 		
-		# Handle parent-child relationships based on indentation
+		# Handle parent relationships
 		while depth_stack.size() > 0 and depth <= depth_stack[-1]:
 			node_stack.pop_back()
 			depth_stack.pop_back()
 		
 		if node_stack.size() > 0:
-			var parent_data = node_stack[-1]
-			node_data.parent_uid = parent_data.uid
-			parent_data.children.append(node_data)
+			info.parent_uid = node_stack[-1]
 		
-		node_stack.append(node_data)
+		node_stack.append(info.uid)
 		depth_stack.append(depth)
 		
-		# Add to node monitor
-		open_world_database.node_monitor.node_data_lookup[node_data.uid] = node_data
+		# Store node info
+		owdb.node_monitor.stored_nodes[info.uid] = info
 		
-		# Add top-level nodes to chunks
-		if node_data.parent_uid == "":
-			open_world_database.add_node_to_chunk(node_data)
+		# Add to chunk lookup
+		owdb.add_to_chunk_lookup(info.uid, info.position, info.size)
 	
 	file.close()
-	open_world_database.is_loading = false
 	print("Database loaded successfully!")
 
-func _get_line_depth(line: String) -> int:
-	var depth = 0
-	for i in range(line.length()):
-		if line[i] == "\t":
-			depth += 1
-		else:
-			break
-	return depth
-
-func _parse_node_line(line: String) -> NodeData:
+func _parse_line(line: String) -> Dictionary:
 	var parts = line.split("|")
 	if parts.size() < 6:
-		print("Error: Invalid line format: ", line)
-		return null
+		return {}
 	
-	var node_data = NodeData.new()
-	node_data.uid = parts[0]
-	node_data.scene = parts[1].strip_edges().trim_prefix("\"").trim_suffix("\"")
+	var info = {
+		"uid": parts[0],
+		"scene": parts[1].strip_edges().trim_prefix("\"").trim_suffix("\""),
+		"parent_uid": "",
+		"properties": {}
+	}
 	
 	# Parse position
 	var pos_parts = parts[2].split(",")
-	if pos_parts.size() == 3:
-		node_data.position = Vector3(
-			pos_parts[0].to_float(),
-			pos_parts[1].to_float(),
-			pos_parts[2].to_float()
-		)
+	info.position = Vector3(
+		pos_parts[0].to_float(),
+		pos_parts[1].to_float(),
+		pos_parts[2].to_float()
+	)
 	
 	# Parse rotation
 	var rot_parts = parts[3].split(",")
-	if rot_parts.size() == 3:
-		node_data.rotation = Vector3(
-			rot_parts[0].to_float(),
-			rot_parts[1].to_float(),
-			rot_parts[2].to_float()
-		)
+	info.rotation = Vector3(
+		rot_parts[0].to_float(),
+		rot_parts[1].to_float(),
+		rot_parts[2].to_float()
+	)
 	
 	# Parse scale
 	var scale_parts = parts[4].split(",")
-	if scale_parts.size() == 3:
-		node_data.scale = Vector3(
-			scale_parts[0].to_float(),
-			scale_parts[1].to_float(),
-			scale_parts[2].to_float()
-		)
+	info.scale = Vector3(
+		scale_parts[0].to_float(),
+		scale_parts[1].to_float(),
+		scale_parts[2].to_float()
+	)
 	
-	# Parse size
-	node_data.size = parts[5].to_float()
+	info.size = parts[5].to_float()
 	
 	# Parse properties
 	if parts.size() > 6 and parts[6] != "{}":
 		var json = JSON.new()
-		var parse_result = json.parse(parts[6])
-		if parse_result == OK:
-			node_data.properties = json.data
+		if json.parse(parts[6]) == OK:
+			info.properties = json.data
 	
-	return node_data
+	return info

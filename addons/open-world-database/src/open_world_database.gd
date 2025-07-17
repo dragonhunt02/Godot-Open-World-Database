@@ -7,89 +7,123 @@ enum Size { SMALL, MEDIUM, LARGE, HUGE }
 @export var size_thresholds: Array[float] = [0.5, 2.0, 8.0]
 @export var chunk_sizes: Array[float] = [8.0, 16.0, 64.0]
 @export var chunk_load_range: int = 3
-@export var center_node: Node3D
 @export var debug_enabled: bool = false
 @export var camera: Node
 
-@export_tool_button("TEST", "save") var test_action = test
 @export_tool_button("Save Database", "save") var save_action = save_database
 @export_tool_button("Load Database", "load") var load_action = load_database
+@export_tool_button("Reset", "save") var reset_action = reset
 
-var nodes_loaded = {}
-
-var database :Database
-var chunk_manager :ChunkManager
-var node_monitor : NodeMonitor
-var is_loading = false
+var chunk_lookup: Dictionary = {} # [Size][Vector2i] -> Array[String] (UIDs)
+var database: Database
+var chunk_manager: ChunkManager
+var node_monitor: NodeMonitor
+var is_loading: bool = false
 
 func _ready() -> void:
+	is_loading = true
 	NodeUtils.remove_children(self)
 	
 	chunk_manager = ChunkManager.new(self)
 	node_monitor = NodeMonitor.new(self)
 	database = Database.new(self)
+	
 	setup_listeners(self)
-	
-# Add this to open_world_database.gd
+	database.load_database()
+	chunk_manager._update_camera_chunks()
+	is_loading = false
 
-func _process(_delta: float) -> void:
-	if chunk_manager:
-		chunk_manager._update_camera_chunks()
-
-	
-func setup_listeners(node:Node):
+func setup_listeners(node: Node):
 	node.child_entered_tree.connect(_on_child_entered_tree)
 	node.child_exiting_tree.connect(_on_child_exiting_tree)
 
 func _on_child_entered_tree(node: Node):
-	#if is_loading:
-	#	return #track externally
-	if node.scene_file_path == "":
-		return #not a scene
-	if !self.is_ancestor_of(node):
-		return
-		
-	print(node.name, " entered tree of ", node.get_parent())
-	if not node.has_method("get_global_position"):
-		print("OpenWorldDatabase: Node does not have a position - this will not be saved!")
-		return
-		
-	if node.has_meta("_owd_uid"):
-		print("already has meta")
-		nodes_loaded[node.name] = node
-		print(nodes_loaded.size(), " ", nodes_loaded)
-		return
-		
-	node.name = node.name + '-' + NodeUtils.generate_uid()
-	node.set_meta("_owd_uid", node.name)
-	
-	nodes_loaded[node.name] = node
-	print(nodes_loaded.size(), " ", nodes_loaded)
-	
-	#add listeners after scene has added its internal children
 	call_deferred("setup_listeners", node)
 	
-
+	if is_loading or node.scene_file_path == "" or !self.is_ancestor_of(node):
+		return
+	
+	# Only set UID if node doesn't have one
+	if not node.has_meta("_owd_uid"):
+		var uid = node.name + '-' + NodeUtils.generate_uid()
+		node.set_meta("_owd_uid", uid)
 
 func _on_child_exiting_tree(node: Node):
-	#if is_loading:
-	#	return #track externally
-	if node.scene_file_path == "":
-		return #not a scene
-		
-	print(node.name, " left tree of ", node.get_parent())
+	if is_loading or node.scene_file_path == "":
+		return
 	
-	nodes_loaded.erase(node.name)
-	print(nodes_loaded.size(), " ", nodes_loaded)
+	# Just mark for later processing
+	if node.has_meta("_owd_uid"):
+		call_deferred("_check_node_removal", node)
+
+func _check_node_removal(node):
+	# If node is still valid and in tree, it was reparented
+	if is_instance_valid(node) and node.is_inside_tree():
+		return
+
+func get_all_owd_nodes(parent: Node = self) -> Array[Node]:
+	var nodes: Array[Node] = []
+	for child in parent.get_children():
+		if child.has_meta("_owd_uid"):
+			nodes.append(child)
+		nodes.append_array(get_all_owd_nodes(child))
+	return nodes
+
+func get_node_by_uid(uid: String, parent: Node = self) -> Node:
+	for child in parent.get_children():
+		if child.has_meta("_owd_uid") and child.get_meta("_owd_uid") == uid:
+			return child
+		var found = get_node_by_uid(uid, child)
+		if found:
+			return found
+	return null
+
+func add_to_chunk_lookup(uid: String, position: Vector3, size: float):
+	var size_cat = get_size_category(size)
+	var chunk_pos = get_chunk_position(position, size_cat)
 	
+	if not chunk_lookup.has(size_cat):
+		chunk_lookup[size_cat] = {}
+	if not chunk_lookup[size_cat].has(chunk_pos):
+		chunk_lookup[size_cat][chunk_pos] = []
+	
+	if uid not in chunk_lookup[size_cat][chunk_pos]:
+		chunk_lookup[size_cat][chunk_pos].append(uid)
+
+func remove_from_chunk_lookup(uid: String, position: Vector3, size: float):
+	var size_cat = get_size_category(size)
+	var chunk_pos = get_chunk_position(position, size_cat)
+	
+	if chunk_lookup.has(size_cat) and chunk_lookup[size_cat].has(chunk_pos):
+		chunk_lookup[size_cat][chunk_pos].erase(uid)
+		if chunk_lookup[size_cat][chunk_pos].is_empty():
+			chunk_lookup[size_cat].erase(chunk_pos)
+
+func get_size_category(node_size: float) -> Size:
+	for i in range(size_thresholds.size()):
+		if node_size <= size_thresholds[i]:
+			return i
+	return Size.HUGE
+
+func get_chunk_position(position: Vector3, size_category: Size) -> Vector2i:
+	var chunk_size = chunk_sizes[size_category]
+	return Vector2i(int(position.x / chunk_size), int(position.z / chunk_size))
+
+func _process(_delta: float) -> void:
+	if chunk_manager and not is_loading:
+		chunk_manager._update_camera_chunks()
+
 func save_database():
 	database.save_database()
 
 func load_database():
+	reset()
+	is_loading = true
 	database.load_database()
-	
-func test():
-	for node in nodes_loaded.values():
-		print(node_monitor.get_properties(node))
-		# for each node loaded outputs in the format:
-		# { "position": (0.403813, 0.0, 0.985037), "rotation": (0.0, 0.0, 0.0), "scale": (1.0, 1.0, 1.0), "size": 0.5, "test": "woohoo" }
+	is_loading = false
+
+func reset():
+	is_loading = true
+	NodeUtils.remove_children(self)
+	chunk_lookup.clear()
+	is_loading = false

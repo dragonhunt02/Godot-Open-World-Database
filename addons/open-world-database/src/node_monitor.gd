@@ -3,45 +3,59 @@
 extends RefCounted
 class_name NodeMonitor
 
-signal node_properties_updated(node_data: NodeData)
-signal node_needs_rechunking(node_data: NodeData)
-
 var owdb: OpenWorldDatabase
-
-var node_data_lookup: Dictionary = {} # uid -> NodeData
-var monitoring: Array[Node] = []
-var baseline_properties: Array[String] = []
-var debug_enabled: bool = false
-var loaded_scenes: Dictionary = {} # uid -> Node
+var stored_nodes: Dictionary = {} # uid -> node info
 
 func _init(open_world_database: OpenWorldDatabase):
 	owdb = open_world_database
-	# Cache baseline properties
-	var baseline_node = Node3D.new()
-	for property in baseline_node.get_property_list():
-		baseline_properties.append(property.name)
-	baseline_properties.append("metadata/_owd_uid")
-	baseline_properties.append("metadata/_owd_custom_properties")
-	baseline_properties.append("metadata/_owd_transform")
-	baseline_node.queue_free()
 
-func get_properties(node: Node3D) -> Dictionary:
-	var properties := {}
+func create_node_info(node: Node3D) -> Dictionary:
+	var info = {
+		"uid": node.get_meta("_owd_uid", ""),
+		"scene": node.scene_file_path,
+		"position": node.global_position,
+		"rotation": node.global_rotation,
+		"scale": node.scale,
+		"size": NodeUtils.calculate_node_size(node),
+		"parent_uid": "",
+		"properties": {}
+	}
 	
-	# Core transform properties
-	properties["position"] = node.global_position
-	properties["rotation"] = node.global_rotation
-	properties["scale"] = node.scale
-	properties["size"] = NodeUtils.calculate_node_size(node)
+	# Get parent UID
+	var parent = node.get_parent()
+	if parent and parent.has_meta("_owd_uid"):
+		info.parent_uid = parent.get_meta("_owd_uid")
 	
-	# Custom properties (excluding baseline properties)
-	for property in node.get_property_list():
-		var prop_name = property.name
-		
-		# Skip baseline properties, private properties, and non-storage properties
-		if baseline_properties.has(prop_name) or prop_name.begins_with("_") or not (property.usage & PROPERTY_USAGE_STORAGE):
-			continue
-		
-		properties[prop_name] = node.get(prop_name)
+	# Get custom properties
+	var baseline_node = Node3D.new()
+	var baseline_props = []
+	for prop in baseline_node.get_property_list():
+		baseline_props.append(prop.name)
+	baseline_props.append("metadata/_owd_uid")
+	baseline_node.free()
 	
-	return properties
+	for prop in node.get_property_list():
+		if prop.name not in baseline_props and not prop.name.begins_with("_") \
+		   and (prop.usage & PROPERTY_USAGE_STORAGE):
+			info.properties[prop.name] = node.get(prop.name)
+	
+	return info
+
+func update_stored_node(node: Node3D):
+	var uid = node.get_meta("_owd_uid", "")
+	if uid:
+		stored_nodes[uid] = create_node_info(node)
+
+func store_node_hierarchy(node: Node3D):
+	update_stored_node(node)
+	for child in node.get_children():
+		if child.has_meta("_owd_uid"):
+			store_node_hierarchy(child)
+
+func get_nodes_for_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i) -> Array:
+	var nodes = []
+	if owdb.chunk_lookup.has(size) and owdb.chunk_lookup[size].has(chunk_pos):
+		for uid in owdb.chunk_lookup[size][chunk_pos]:
+			if stored_nodes.has(uid):
+				nodes.append(stored_nodes[uid])
+	return nodes
