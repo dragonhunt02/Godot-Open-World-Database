@@ -9,6 +9,9 @@ var last_camera_position: Vector3
 
 func _init(open_world_database: OpenWorldDatabase):
 	owdb = open_world_database
+	reset()
+
+func reset():
 	for size in OpenWorldDatabase.Size.values():
 		loaded_chunks[size] = {}
 

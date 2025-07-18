@@ -1,8 +1,30 @@
-# Godot 4+ specific ignores
-.godot/
-/android/
-icon.svg
-icon.svg.import
-.editorconfig
-project.godot
-addons/script-ide/
+# Ignore everything by default
+*
+
+# But track the specific addon folder
+!/addons/
+!/addons/open-world-database/
+!/addons/open-world-database/**
+
+# Always track these important files
+!.gitignore
+!README.md
+!LICENSE
+!project.godot
+
+# Godot-generated files to ignore even in tracked folders
+**/.godot/
+**/.import/
+**/export_presets.cfg
+**/export.cfg
+**/*.tmp
+**/*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

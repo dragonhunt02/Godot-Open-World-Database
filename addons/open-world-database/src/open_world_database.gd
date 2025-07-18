@@ -13,6 +13,7 @@ enum Size { SMALL, MEDIUM, LARGE, HUGE }
 @export_tool_button("Save Database", "save") var save_action = save_database
 @export_tool_button("Load Database", "load") var load_action = load_database
 @export_tool_button("Reset", "save") var reset_action = reset
+#@export_tool_button("TEST", "save") var test_action = test
 
 var chunk_lookup: Dictionary = {} # [Size][Vector2i] -> Array[String] (UIDs)
 var database: Database
@@ -21,21 +22,28 @@ var node_monitor: NodeMonitor
 var is_loading: bool = false
 
 func _ready() -> void:
+	reset()
 	is_loading = true
-	NodeUtils.remove_children(self)
-	
-	chunk_manager = ChunkManager.new(self)
-	node_monitor = NodeMonitor.new(self)
-	database = Database.new(self)
-	
-	setup_listeners(self)
 	database.load_database()
 	chunk_manager._update_camera_chunks()
 	is_loading = false
 
+func reset():
+	is_loading = true
+	NodeUtils.remove_children(self)
+	chunk_manager = ChunkManager.new(self)
+	node_monitor = NodeMonitor.new(self)
+	database = Database.new(self)
+	setup_listeners(self)
+	is_loading = false
+	
 func setup_listeners(node: Node):
-	node.child_entered_tree.connect(_on_child_entered_tree)
-	node.child_exiting_tree.connect(_on_child_exiting_tree)
+	if not node.child_entered_tree.is_connected(_on_child_entered_tree):
+		node.child_entered_tree.connect(_on_child_entered_tree)
+	
+	if not node.child_exiting_tree.is_connected(_on_child_exiting_tree):
+		node.child_exiting_tree.connect(_on_child_exiting_tree)
+
 
 func _on_child_entered_tree(node: Node):
 	call_deferred("setup_listeners", node)
@@ -47,6 +55,7 @@ func _on_child_entered_tree(node: Node):
 	if not node.has_meta("_owd_uid"):
 		var uid = node.name + '-' + NodeUtils.generate_uid()
 		node.set_meta("_owd_uid", uid)
+		node.name = uid
 
 func _on_child_exiting_tree(node: Node):
 	if is_loading or node.scene_file_path == "":
@@ -65,6 +74,7 @@ func get_all_owd_nodes(parent: Node = self) -> Array[Node]:
 	var nodes: Array[Node] = []
 	for child in parent.get_children():
 		if child.has_meta("_owd_uid"):
+		#if parent.is_editable_instance(child):
 			nodes.append(child)
 		nodes.append_array(get_all_owd_nodes(child))
 	return nodes
@@ -120,10 +130,4 @@ func load_database():
 	reset()
 	is_loading = true
 	database.load_database()
-	is_loading = false
-
-func reset():
-	is_loading = true
-	NodeUtils.remove_children(self)
-	chunk_lookup.clear()
 	is_loading = false
