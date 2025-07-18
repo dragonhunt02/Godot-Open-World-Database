@@ -1,7 +1,12 @@
 SmallBox-1752791225043_3129|"res://addons/open-world-database/demo/small_box.tscn"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"parent 1"}
-SmallBox-1752791234688_8001|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,0.01395001448691,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"child 1"}
-	SmallBox-1752795977622_2796|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,0.01395001448691,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"Change me"}
-SmallBox-1752791238063_8532|"res://addons/open-world-database/demo/small_box.tscn"|5.35591125488281,0.00000002980232,7.13631629943848|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"distant 1"}
+SmallBox-1752791234688_8001|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,1.12094068527222,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000003576279|{"test":"child 1"}
+SmallBox-1752791238063_8532|"res://addons/open-world-database/demo/small_box.tscn"|0.63226985931396,-0.00000032782555,0.43322396278381|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"distant 1"}
 SmallBox-1752791241341_4381|"res://addons/open-world-database/demo/small_box.tscn"|1.08271598815918,0.0,1.25117683410645|0.0,0.0,0.0|1.0,1.0,1.0|0.40000009536743|{"test":"alone 1"}
-	SmallBox-1752795904028_4820|"res://addons/open-world-database/demo/small_box.tscn"|1.08271598815918,0.0,1.25117683410645|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"Change me"}
 SmallBox-1752795901109_2743|"res://addons/open-world-database/demo/small_box.tscn"|5.77343320846558,0.0,9.84105587005615|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"Change me"}
+SmallBox-1752795904028_4820|"res://addons/open-world-database/demo/small_box.tscn"|1.08271598815918,0.0,1.25117683410645|0.0,0.0,0.0|1.0,1.0,1.0|0.40000009536743|{"test":"Change me"}
+SmallBox-1752795977622_2796|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,1.12094068527222,0.96909958124161|0.0,0.0,0.0|1.0,1.0,1.0|0.40000003576279|{"test":"Change me"}
+SmallBox-1752802875291_1500|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,0.01395001448691,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"Change me"}
+SmallBox-1752802875291_2588|"res://addons/open-world-database/demo/small_box.tscn"|-0.09784231334925,0.01395001448691,0.30000001192093|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"child 1"}
+SmallBox-1752802875291_7317|"res://addons/open-world-database/demo/small_box.tscn"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.40000000596046|{"test":"parent 1"}
+SmallBox-1752804180008_8725|"res://addons/open-world-database/demo/small_box.tscn"|0.49576580524445,0.68293344974518,0.93539440631866|0.0,0.0,0.0|1.0,1.0,1.0|0.40000003576279|{"test":"Change me"}
+SmallBox-1752804284647_2320|"res://addons/open-world-database/demo/small_box.tscn"|0.04085405915976,1.12094068527222,2.02813124656677|0.0,0.0,0.0|1.0,1.0,1.0|0.40000009536743|{"test":"Change me"}

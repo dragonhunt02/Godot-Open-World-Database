@@ -16,14 +16,28 @@ func reset():
 		loaded_chunks[size] = {}
 
 func _get_camera() -> Node3D:
+	
 	if Engine.is_editor_hint():
 		var viewport = EditorInterface.get_editor_viewport_3d(0)
 		if viewport:
 			return viewport.get_camera_3d()
-	
+			
 	if owdb.camera and owdb.camera is Node3D:
 		return owdb.camera
+
 	
+	owdb.camera = _find_visible_camera3d(owdb.get_tree().root)
+	
+	return owdb.camera
+	
+func _find_visible_camera3d(node: Node) -> Camera3D:
+	if node is Camera3D and node.visible:
+		return node
+	
+	for child in node.get_children():
+		var found = _find_visible_camera3d(child)
+		if found:
+			return found
 	return null
 
 func _update_camera_chunks():
@@ -36,6 +50,9 @@ func _update_camera_chunks():
 		return
 	
 	last_camera_position = current_pos
+	
+	# First, validate all loaded nodes are in correct chunks
+	_validate_loaded_nodes_chunks()
 	
 	# Process chunks from largest to smallest for proper hierarchy loading
 	var sizes = OpenWorldDatabase.Size.values()
@@ -68,6 +85,47 @@ func _update_camera_chunks():
 				_load_chunk(size, chunk_pos)
 		
 		loaded_chunks[size] = new_chunks
+
+func _validate_loaded_nodes_chunks():
+	# Get all loaded nodes
+	var all_nodes = owdb.get_all_owd_nodes()
+	
+	for node in all_nodes:
+		if not node is Node3D:
+			continue
+			
+		var uid = node.get_meta("_owd_uid", "")
+		if uid == "":
+			continue
+		
+		var node_size = NodeUtils.calculate_node_size(node)
+		var current_size_cat = owdb.get_size_category(node_size)
+		var current_chunk = owdb.get_chunk_position(node.global_position, current_size_cat)
+		
+		# Find and remove node from any wrong location (wrong size category or wrong chunk)
+		var found_in_wrong_location = false
+		for size_cat in OpenWorldDatabase.Size.values():
+			if owdb.chunk_lookup.has(size_cat):
+				for chunk_pos in owdb.chunk_lookup[size_cat]:
+					if uid in owdb.chunk_lookup[size_cat][chunk_pos]:
+						if size_cat != current_size_cat or chunk_pos != current_chunk:
+							# Node has moved to different chunk or changed size category
+							found_in_wrong_location = true
+							owdb.chunk_lookup[size_cat][chunk_pos].erase(uid)
+							if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
+								owdb.chunk_lookup[size_cat].erase(chunk_pos)
+		
+		# Add to correct size category and chunk
+		if found_in_wrong_location or not _is_node_in_chunk_lookup(uid, current_size_cat, current_chunk):
+			owdb.add_to_chunk_lookup(uid, node.global_position, node_size)
+			# Update stored node info with new size
+			owdb.node_monitor.update_stored_node(node)
+
+
+func _is_node_in_chunk_lookup(uid: String, size_cat: OpenWorldDatabase.Size, chunk_pos: Vector2i) -> bool:
+	return owdb.chunk_lookup.has(size_cat) and \
+		   owdb.chunk_lookup[size_cat].has(chunk_pos) and \
+		   uid in owdb.chunk_lookup[size_cat][chunk_pos]
 
 func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
@@ -128,7 +186,10 @@ func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	
 	owdb.is_loading = true
 	
-	for uid in owdb.chunk_lookup[size][chunk_pos]:
+	# Make a copy since we'll be modifying the array
+	var uids_to_unload = owdb.chunk_lookup[size][chunk_pos].duplicate()
+	
+	for uid in uids_to_unload:
 		var node = owdb.get_node_by_uid(uid)
 		if node:
 			# Update stored data before unloading

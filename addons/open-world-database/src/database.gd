@@ -9,10 +9,24 @@ func _init(open_world_database: OpenWorldDatabase):
 	owdb = open_world_database
 
 func get_database_path() -> String:
-	var scene_path = EditorInterface.get_edited_scene_root().scene_file_path
+	var scene_path: String = ""
+	
+	# Check if we're in the editor
+	if Engine.is_editor_hint():
+		var edited_scene = EditorInterface.get_edited_scene_root()
+		if edited_scene:
+			scene_path = edited_scene.scene_file_path
+	else:
+		# We're in-game, get the current scene
+		var current_scene = owdb.get_tree().current_scene
+		if current_scene:
+			scene_path = current_scene.scene_file_path
+	
 	if scene_path == "":
 		return ""
+		
 	return scene_path.get_basename() + ".owdb"
+
 
 func save_database():
 	var db_path = get_database_path()
@@ -44,7 +58,8 @@ func save_database():
 		_write_node_recursive(file, uid, 0)
 	
 	file.close()
-	print("Database saved successfully!")
+	if owdb.debug_enabled:
+		print("Database saved successfully!")
 
 func _write_node_recursive(file: FileAccess, uid: String, depth: int):
 	var info = owdb.node_monitor.stored_nodes.get(uid, {})
