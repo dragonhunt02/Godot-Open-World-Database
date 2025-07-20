@@ -19,6 +19,10 @@
 **/export.cfg
 **/*.tmp
 **/*.log
+**/*.translation
+**/.mono/
+**/data_*/
+**/mono_crash.*.json
 
 # OS generated files
 .DS_Store

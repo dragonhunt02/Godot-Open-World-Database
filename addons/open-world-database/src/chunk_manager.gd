@@ -51,9 +51,6 @@ func _update_camera_chunks():
 	
 	last_camera_position = current_pos
 	
-	# First, validate all loaded nodes are in correct chunks
-	_validate_loaded_nodes_chunks()
-	
 	# Process chunks from largest to smallest for proper hierarchy loading
 	var sizes = OpenWorldDatabase.Size.values()
 	sizes.reverse()
@@ -74,53 +71,61 @@ func _update_camera_chunks():
 				var chunk_pos = center_chunk + Vector2i(x, z)
 				new_chunks[chunk_pos] = true
 		
-		# Unload chunks
-		for chunk_pos in loaded_chunks[size]:
+		# Find chunks that are being unloaded
+		var chunks_to_unload = []
+		var loaded_chunks_size = loaded_chunks[size]
+		for chunk_pos in loaded_chunks_size:
 			if not new_chunks.has(chunk_pos):
-				_unload_chunk(size, chunk_pos)
+				chunks_to_unload.append(chunk_pos)
+		
+		# Validate nodes only in chunks that are being unloaded
+		_validate_nodes_in_chunks(size, chunks_to_unload)
+		
+		# Unload chunks
+		for chunk_pos in chunks_to_unload:
+			_unload_chunk(size, chunk_pos)
 		
 		# Load chunks
 		for chunk_pos in new_chunks:
-			if not loaded_chunks[size].has(chunk_pos):
+			if not loaded_chunks_size.has(chunk_pos):
 				_load_chunk(size, chunk_pos)
 		
 		loaded_chunks[size] = new_chunks
 
-func _validate_loaded_nodes_chunks():
-	# Get all loaded nodes
-	var all_nodes = owdb.get_all_owd_nodes()
-	
-	for node in all_nodes:
-		if not node is Node3D:
+func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check: Array):
+	if chunks_to_check.is_empty():
+		return
+		
+	# Only process nodes in the specified chunks
+	for chunk_pos in chunks_to_check:
+		if not owdb.chunk_lookup.has(size_cat) or not owdb.chunk_lookup[size_cat].has(chunk_pos):
 			continue
 			
-		var uid = node.get_meta("_owd_uid", "")
-		if uid == "":
-			continue
+		# Make a copy since we might modify the array
+		var node_uids = owdb.chunk_lookup[size_cat][chunk_pos].duplicate()
 		
-		var node_size = NodeUtils.calculate_node_size(node)
-		var current_size_cat = owdb.get_size_category(node_size)
-		var current_chunk = owdb.get_chunk_position(node.global_position, current_size_cat)
-		
-		# Find and remove node from any wrong location (wrong size category or wrong chunk)
-		var found_in_wrong_location = false
-		for size_cat in OpenWorldDatabase.Size.values():
-			if owdb.chunk_lookup.has(size_cat):
-				for chunk_pos in owdb.chunk_lookup[size_cat]:
-					if uid in owdb.chunk_lookup[size_cat][chunk_pos]:
-						if size_cat != current_size_cat or chunk_pos != current_chunk:
-							# Node has moved to different chunk or changed size category
-							found_in_wrong_location = true
-							owdb.chunk_lookup[size_cat][chunk_pos].erase(uid)
-							if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
-								owdb.chunk_lookup[size_cat].erase(chunk_pos)
-		
-		# Add to correct size category and chunk
-		if found_in_wrong_location or not _is_node_in_chunk_lookup(uid, current_size_cat, current_chunk):
-			owdb.add_to_chunk_lookup(uid, node.global_position, node_size)
-			# Update stored node info with new size
-			owdb.node_monitor.update_stored_node(node)
-
+		for uid in node_uids:
+			var node = owdb.get_node_by_uid(uid)
+			if not node or not node is Node3D:
+				continue
+			
+			# Check if node has moved or changed size
+			var node_size = NodeUtils.calculate_node_size(node)
+			var current_size_cat = owdb.get_size_category(node_size)
+			var current_chunk = owdb.get_chunk_position(node.global_position, current_size_cat)
+			
+			# If node has moved to a different chunk or changed size category
+			if current_size_cat != size_cat or current_chunk != chunk_pos:
+				# Remove from old location
+				owdb.chunk_lookup[size_cat][chunk_pos].erase(uid)
+				if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
+					owdb.chunk_lookup[size_cat].erase(chunk_pos)
+				
+				# Add to new location
+				owdb.add_to_chunk_lookup(uid, node.global_position, node_size)
+				
+				# Update stored node info
+				owdb.node_monitor.update_stored_node(node)
 
 func _is_node_in_chunk_lookup(uid: String, size_cat: OpenWorldDatabase.Size, chunk_pos: Vector2i) -> bool:
 	return owdb.chunk_lookup.has(size_cat) and \
@@ -136,16 +141,18 @@ func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	var node_infos = owdb.node_monitor.get_nodes_for_chunk(size, chunk_pos)
 	
 	# Sort by hierarchy level (parents first)
-	node_infos.sort_custom(func(a, b): return a.parent_uid.length() < b.parent_uid.length())
+	#node_infos.sort_custom(func(a, b): return a.parent_uid.length() < b.parent_uid.length())
 	
 	for info in node_infos:
-		if not owdb.get_node_by_uid(info.uid):
-			_load_node(info)
+		#if not owdb.get_node_by_uid(info.uid):
+		_load_node(info)
+		#else:
+		#	print("node already loaded")
 	
 	owdb.is_loading = false
 
 func _load_node(node_info: Dictionary):
-	var scene = load(node_info.scene)
+	var scene = ResourceLoader.load(node_info.scene, "", ResourceLoader.CACHE_MODE_REUSE) #load(node_info.scene)
 	var instance = scene.instantiate()
 	instance.set_meta("_owd_uid", node_info.uid)
 	instance.name = node_info.uid
@@ -171,6 +178,7 @@ func _load_node(node_info: Dictionary):
 		if prop_name not in ["position", "rotation", "scale", "size"]:
 			instance.set(prop_name, node_info.properties[prop_name])
 	
+	"""
 	# Check for orphaned children and reparent them
 	for child in owdb.get_children():
 		if child.has_meta("_owd_uid") and child != instance:
@@ -179,7 +187,8 @@ func _load_node(node_info: Dictionary):
 			).get("parent_uid", "")
 			if child_parent_uid == node_info.uid:
 				child.reparent(instance)
-
+	"""
+	
 func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
 		return
@@ -194,6 +203,6 @@ func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 		if node:
 			# Update stored data before unloading
 			owdb.node_monitor.update_stored_node(node)
-			node.queue_free()
+			node.free()
 	
 	owdb.is_loading = false

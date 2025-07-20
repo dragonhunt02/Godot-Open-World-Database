@@ -1,72 +1,39 @@
-[gd_scene load_steps=4 format=3 uid="uid://bjfrcs1obghq6"]
+[gd_scene load_steps=6 format=3 uid="uid://bjfrcs1obghq6"]
 
 [ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
-[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_g323s"]
-[ext_resource type="Script" uid="uid://dampo4awcnnfn" path="res://addons/open-world-database/demo/small_box.gd" id="3_aw7xk"]
+[ext_resource type="Script" uid="uid://6sdiubxiyam5" path="res://addons/open-world-database/demo/camera_3d.gd" id="4_aw7xk"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_aw7xk"]
+sky_top_color = Color(0.193826, 0.635623, 1, 1)
+sky_horizon_color = Color(0.801067, 0.624598, 0.571787, 1)
+sky_curve = 0.0274517
+ground_bottom_color = Color(0, 0, 0, 1)
+ground_horizon_color = Color(0.8, 0.623529, 0.572549, 1)
+ground_curve = 0.0254913
+
+[sub_resource type="Sky" id="Sky_2ssfv"]
+sky_material = SubResource("ProceduralSkyMaterial_aw7xk")
+
+[sub_resource type="Environment" id="Environment_tejrk"]
+background_mode = 2
+sky = SubResource("Sky_2ssfv")
+tonemap_mode = 2
+glow_enabled = true
 
 [node name="DemoScene" type="Node3D"]
 
-[node name="OpenWorldDatabase" type="Node" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_tejrk")
+
+[node name="OpenWorldDatabase" type="Node" parent="." node_paths=PackedStringArray("camera")]
 script = ExtResource("1_v2w8i")
-chunk_sizes = Array[float]([2.0, 4.0, 8.0])
+chunk_sizes = Array[float]([4.0, 8.0, 16.0])
 debug_enabled = true
+camera = NodePath("../Camera3D")
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
 
-[node name="SmallBox-1752804284647_2320" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0408541, 1.12094, 2.02813)
-script = ExtResource("3_aw7xk")
-metadata/_owd_uid = "SmallBox-1752804284647_2320"
+[node name="shh" type="Node3D" parent="."]
 
-[node name="SmallBox-1752804180008_8725" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.495766, 0.682933, 0.935394)
-script = ExtResource("3_aw7xk")
-metadata/_owd_uid = "SmallBox-1752804180008_8725"
-
-[node name="SmallBox-1752795977622_2796" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0978423, 1.12094, 0.9691)
-script = ExtResource("3_aw7xk")
-metadata/_owd_uid = "SmallBox-1752795977622_2796"
-
-[node name="SmallBox-1752791238063_8532" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.63227, -3.27826e-07, 0.433224)
-script = ExtResource("3_aw7xk")
-test = "distant 1"
-metadata/_owd_uid = "SmallBox-1752791238063_8532"
-
-[node name="SmallBox-1752791241341_4381" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08272, 0, 1.25118)
-script = ExtResource("3_aw7xk")
-test = "alone 1"
-metadata/_owd_uid = "SmallBox-1752791241341_4381"
-
-[node name="SmallBox-1752795904028_4820" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08272, 0, 1.25118)
-script = ExtResource("3_aw7xk")
-metadata/_owd_uid = "SmallBox-1752795904028_4820"
-
-[node name="SmallBox-1752802875291_2588" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0978423, 0.01395, 0.3)
-script = ExtResource("3_aw7xk")
-test = "child 1"
-metadata/_owd_uid = "SmallBox-1752802875291_2588"
-
-[node name="SmallBox-1752802875291_1500" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0978423, 0.01395, 0.3)
-script = ExtResource("3_aw7xk")
-metadata/_owd_uid = "SmallBox-1752802875291_1500"
-
-[node name="SmallBox-1752802875291_7317" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-script = ExtResource("3_aw7xk")
-test = "parent 1"
-metadata/_owd_uid = "SmallBox-1752802875291_7317"
-
-[node name="SmallBox-1752791234688_8001" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0978423, 1.12094, 0.3)
-script = ExtResource("3_aw7xk")
-test = "child 1"
-metadata/_owd_uid = "SmallBox-1752791234688_8001"
-
-[node name="SmallBox-1752791225043_3129" type="Node3D" parent="OpenWorldDatabase" instance=ExtResource("2_g323s")]
-script = ExtResource("3_aw7xk")
-test = "parent 1"
-metadata/_owd_uid = "SmallBox-1752791225043_3129"
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.12559, 0)
+script = ExtResource("4_aw7xk")

@@ -110,14 +110,12 @@ func get_all_owd_nodes(parent: Node = self) -> Array[Node]:
 		nodes.append_array(get_all_owd_nodes(child))
 	return nodes
 
-func get_node_by_uid(uid: String, parent: Node = self) -> Node:
-	for child in parent.get_children():
-		if child.has_meta("_owd_uid") and child.get_meta("_owd_uid") == uid:
-			return child
-		var found = get_node_by_uid(uid, child)
-		if found:
-			return found
-	return null
+func get_node_by_uid(uid: String) -> Node:
+	var found = get_node(uid)
+	if found:
+		return found
+	else:
+		return find_child("*" + uid, true, false)
 
 func add_to_chunk_lookup(uid: String, position: Vector3, size: float):
 	var size_cat = get_size_category(size)

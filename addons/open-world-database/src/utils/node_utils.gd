@@ -33,9 +33,24 @@ static func get_node_aabb(node: Node, exclude_top_level_transform: bool = true) 
 	return bounds
 
 static func calculate_node_size(node: Node3D) -> float:
+	# Check if we have cached values
+	if node.has_meta("_owd_last_scale"):
+		# If scale hasn't changed, return cached size
+		var meta = node.get_meta("_owd_last_scale")
+		if node.scale == meta:
+			return node.get_meta("_owd_last_size")
+	
+	# Calculate new size
 	var aabb = get_node_aabb(node, false)
 	var size = aabb.size
-	return max(size.x, max(size.y, size.z))
+	var max_size = max(size.x, max(size.y, size.z))
+	
+	# Cache the scale and size
+	node.set_meta("_owd_last_scale", node.scale)
+	node.set_meta("_owd_last_size", max_size)
+	
+	return max_size
+
 
 static func is_top_level_node(node: Node) -> bool:
 	var parent_node = node.get_parent()
