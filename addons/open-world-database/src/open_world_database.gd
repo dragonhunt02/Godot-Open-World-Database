@@ -72,6 +72,15 @@ func _on_child_entered_tree(node: Node):
 		var new_uid = node.name.split('-')[0] + '-' + NodeUtils.generate_uid()
 		node.set_meta("_owd_uid", new_uid)
 		node.name = new_uid
+		
+		
+	if node is Node3D:
+		# Update node monitor
+		node_monitor.update_stored_node(node)
+		
+		# Add to chunk lookup
+		var node_size = NodeUtils.calculate_node_size(node)
+		add_to_chunk_lookup(uid, node.global_position, node_size)
 
 # Helper function to find if a node with the given UID exists (excluding the current node)
 func find_node_with_uid(uid: String, exclude_node: Node) -> Node:
