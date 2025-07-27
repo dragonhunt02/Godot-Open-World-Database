@@ -3,7 +3,7 @@
 extends Node
 class_name OpenWorldDatabase
 
-enum Size { SMALL, MEDIUM, LARGE, HUGE }
+enum Size { SMALL, MEDIUM, LARGE, ALWAYS_LOADED }
 
 @export_tool_button("DEBUG", "save") var debug_action = debug
 @export_tool_button("Save World Database", "save") var save_action = save_database
@@ -28,6 +28,8 @@ func _ready() -> void:
 	database.load_database()
 	chunk_manager._update_camera_chunks()
 	is_loading = false
+	
+	debug()
 
 func reset():
 	is_loading = true
@@ -69,16 +71,15 @@ func _on_child_entered_tree(node: Node):
 		print("NODE MOVED: ", node.name)
 		# Update node monitor for moved nodes
 		node_monitor.update_stored_node(node)
-		# Update chunk lookup for moved nodes (only for Node3D)
-		if node is Node3D:
-			var uid = node.get_meta("_owd_uid", "")
-			if uid != "":
-				var node_size = NodeUtils.calculate_node_size(node)
-				# Remove from old position and add to new position
-				if node_monitor.stored_nodes.has(uid):
-					var old_info = node_monitor.stored_nodes[uid]
-					remove_from_chunk_lookup(uid, old_info.position, old_info.size)
-				add_to_chunk_lookup(uid, node.global_position, node_size)
+		# Update chunk lookup for moved nodes
+		var uid = node.get_meta("_owd_uid", "")
+		if uid != "":
+			var node_size = NodeUtils.calculate_node_size(node)
+			# Remove from old position and add to new position
+			if node_monitor.stored_nodes.has(uid):
+				var old_info = node_monitor.stored_nodes[uid]
+				remove_from_chunk_lookup(uid, old_info.position, old_info.size)
+			add_to_chunk_lookup(uid, node.global_position if node is Node3D else Vector3.ZERO, node_size)
 		return
 	
 	# This is a new node being added
@@ -105,14 +106,12 @@ func _on_child_entered_tree(node: Node):
 	# Update node monitor
 	node_monitor.update_stored_node(node)
 	
-	# Add to chunk lookup (only for Node3D)
-	if node is Node3D:
-		var node_size = NodeUtils.calculate_node_size(node)
-		add_to_chunk_lookup(uid, node.global_position, node_size)
+	# Add to chunk lookup
+	var node_size = NodeUtils.calculate_node_size(node)
+	add_to_chunk_lookup(uid, node.global_position if node is Node3D else Vector3.ZERO, node_size)
 	
 	if debug_enabled:
 		print(get_tree().get_nodes_in_group("owdb"))
-
 
 func _on_child_exiting_tree(node: Node):
 	if is_loading:
@@ -183,15 +182,23 @@ func remove_from_chunk_lookup(uid: String, position: Vector3, size: float):
 			chunk_lookup[size_cat].erase(chunk_pos)
 
 func get_size_category(node_size: float) -> Size:
+	# Always load nodes with size 0.0 or bigger than LARGE threshold
+	if node_size == 0.0 or node_size > size_thresholds[Size.LARGE]:
+		return Size.ALWAYS_LOADED
+	
 	for i in range(size_thresholds.size()):
 		if node_size <= size_thresholds[i]:
 			return i
-	return Size.HUGE
+	
+	# Should never reach here, but fallback to ALWAYS_LOADED
+	return Size.ALWAYS_LOADED
 
 func get_chunk_position(position: Vector3, size_category: Size) -> Vector2i:
-	var chunk_size = 9999999999999
-	if size_category < 3:
-		chunk_size = chunk_sizes[size_category]
+	# Always loaded nodes go to a single chunk
+	if size_category == Size.ALWAYS_LOADED:
+		return Vector2i(0, 0)
+	
+	var chunk_size = chunk_sizes[size_category]
 	return Vector2i(int(position.x / chunk_size), int(position.z / chunk_size))
 
 func _process(_delta: float) -> void:
@@ -203,15 +210,10 @@ func debug():
 	print("OWD Nodes in group: ", owdb_nodes.size())
 	for node in owdb_nodes:
 		print("  - ", node.get_meta("_owd_uid", "NO_UID"), " : ", node.name)
+	database.debug()
 	
 func save_database():
 	database.save_database()
-
-func load_database():
-	reset()
-	is_loading = true
-	database.load_database()
-	is_loading = false
 
 func _notification(what: int) -> void:
 	if Engine.is_editor_hint():

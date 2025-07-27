@@ -1,6 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://bjfrcs1obghq6"]
+[gd_scene load_steps=8 format=3 uid="uid://bjfrcs1obghq6"]
 
 [ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
+[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_aw7xk"]
+[ext_resource type="Script" uid="uid://dampo4awcnnfn" path="res://addons/open-world-database/demo/small_box.gd" id="3_2ssfv"]
 [ext_resource type="Script" uid="uid://6sdiubxiyam5" path="res://addons/open-world-database/demo/camera_3d.gd" id="4_aw7xk"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_aw7xk"]
@@ -30,13 +32,26 @@ script = ExtResource("1_v2w8i")
 chunk_sizes = Array[float]([4.0, 8.0, 16.0])
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
 
+[node name="Node-1753651419403_2482" type="Node" parent="OpenWorldDatabase"]
+metadata/_owd_uid = "Node-1753651419403_2482"
+
+[node name="SmallBox-1753652352367_5466" type="Node3D" parent="OpenWorldDatabase/Node-1753651419403_2482" instance=ExtResource("2_aw7xk")]
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, -5.41436, 0, 4.54256)
+script = ExtResource("3_2ssfv")
+metadata/_owd_uid = "SmallBox-1753652352367_5466"
+metadata/_owd_last_scale = Vector3(5, 5, 5)
+metadata/_owd_last_size = 2.81775
+
 [node name="Node3D-175365140059_2169" type="Node3D" parent="OpenWorldDatabase"]
 metadata/_owd_uid = "Node3D-175365140059_2169"
 metadata/_owd_last_scale = Vector3(1, 1, 1)
-metadata/_owd_last_size = 0.0
+metadata/_owd_last_size = 0.56355
 
-[node name="Node-1753651419403_2482" type="Node" parent="OpenWorldDatabase"]
-metadata/_owd_uid = "Node-1753651419403_2482"
+[node name="SmallBox-1753652335508_7178" type="Node3D" parent="OpenWorldDatabase/Node3D-175365140059_2169" instance=ExtResource("2_aw7xk")]
+script = ExtResource("3_2ssfv")
+metadata/_owd_uid = "SmallBox-1753652335508_7178"
+metadata/_owd_last_scale = Vector3(1, 1, 1)
+metadata/_owd_last_size = 0.56355
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.12559, 0)

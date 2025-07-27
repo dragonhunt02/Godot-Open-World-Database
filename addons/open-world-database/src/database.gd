@@ -141,12 +141,14 @@ func load_database():
 	file.close()
 	print("")
 	print("Database loaded successfully!")
+
+func debug():
 	print("")
 	print("stored nodes  ", owdb.node_monitor.stored_nodes)
 	print("")
 	print("chunked nodes ", owdb.chunk_lookup)
 	print("")
-
+	
 func _parse_line(line: String) -> Dictionary:
 	var parts = line.split("|")
 	if parts.size() < 6:

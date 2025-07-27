@@ -43,6 +43,10 @@ func _update_camera_chunks():
 		return
 	
 	var current_pos = camera.global_position
+	
+	# Always ensure ALWAYS_LOADED chunk is loaded
+	_ensure_always_loaded_chunk()
+	
 	if last_camera_position.distance_to(current_pos) < owdb.chunk_sizes[OpenWorldDatabase.Size.SMALL] * 0.1:
 		return
 	
@@ -53,6 +57,10 @@ func _update_camera_chunks():
 	sizes.reverse()
 	
 	for size in sizes:
+		# Skip ALWAYS_LOADED as it's handled separately
+		if size == OpenWorldDatabase.Size.ALWAYS_LOADED:
+			continue
+			
 		if size >= owdb.chunk_sizes.size():
 			continue
 		
@@ -89,6 +97,12 @@ func _update_camera_chunks():
 		
 		loaded_chunks[size] = new_chunks
 
+func _ensure_always_loaded_chunk():
+	var always_loaded_chunk = Vector2i(0, 0)
+	if not loaded_chunks[OpenWorldDatabase.Size.ALWAYS_LOADED].has(always_loaded_chunk):
+		_load_chunk(OpenWorldDatabase.Size.ALWAYS_LOADED, always_loaded_chunk)
+		loaded_chunks[OpenWorldDatabase.Size.ALWAYS_LOADED][always_loaded_chunk] = true
+
 func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check: Array):
 	if chunks_to_check.is_empty():
 		return
@@ -106,24 +120,24 @@ func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check
 			if not node:
 				continue
 			
-			# Check if node has moved or changed size (only for Node3D)
-			if node is Node3D:
-				var node_size = NodeUtils.calculate_node_size(node)
-				var current_size_cat = owdb.get_size_category(node_size)
-				var current_chunk = owdb.get_chunk_position(node.global_position, current_size_cat)
+			# Check if node has moved or changed size
+			var node_size = NodeUtils.calculate_node_size(node)
+			var current_size_cat = owdb.get_size_category(node_size)
+			var node_position = node.global_position if node is Node3D else Vector3.ZERO
+			var current_chunk = owdb.get_chunk_position(node_position, current_size_cat)
+			
+			# If node has moved to a different chunk or changed size category
+			if current_size_cat != size_cat or current_chunk != chunk_pos:
+				# Remove from old location
+				owdb.chunk_lookup[size_cat][chunk_pos].erase(uid)
+				if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
+					owdb.chunk_lookup[size_cat].erase(chunk_pos)
 				
-				# If node has moved to a different chunk or changed size category
-				if current_size_cat != size_cat or current_chunk != chunk_pos:
-					# Remove from old location
-					owdb.chunk_lookup[size_cat][chunk_pos].erase(uid)
-					if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
-						owdb.chunk_lookup[size_cat].erase(chunk_pos)
-					
-					# Add to new location
-					owdb.add_to_chunk_lookup(uid, node.global_position, node_size)
-					
-					# Update stored node info
-					owdb.node_monitor.update_stored_node(node)
+				# Add to new location
+				owdb.add_to_chunk_lookup(uid, node_position, node_size)
+				
+				# Update stored node info
+				owdb.node_monitor.update_stored_node(node)
 
 func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
@@ -182,6 +196,10 @@ func _load_node(node_info: Dictionary):
 				instance.set(prop_name, node_info.properties[prop_name])
 	
 func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
+	# Never unload ALWAYS_LOADED chunks
+	if size == OpenWorldDatabase.Size.ALWAYS_LOADED:
+		return
+		
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
 		return
 	
