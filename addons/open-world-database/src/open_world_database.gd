@@ -5,8 +5,8 @@ class_name OpenWorldDatabase
 
 enum Size { SMALL, MEDIUM, LARGE, ALWAYS_LOADED }
 
-@export_tool_button("DEBUG", "save") var debug_action = debug
-@export_tool_button("Save World Database", "save") var save_action = save_database
+#@export_tool_button("DEBUG", "save") var debug_action = debug
+#@export_tool_button("Save World Database", "save") var save_action = save_database
 @export var size_thresholds: Array[float] = [0.5, 2.0, 8.0]
 @export var chunk_sizes: Array[float] = [8.0, 16.0, 64.0]
 @export var chunk_load_range: int = 3
@@ -29,7 +29,8 @@ func _ready() -> void:
 	chunk_manager._update_camera_chunks()
 	is_loading = false
 	
-	debug()
+	if debug_enabled:
+		debug()
 
 func reset():
 	is_loading = true
@@ -148,6 +149,43 @@ func _check_node_removal(node: Node):
 	# Remove from owdb group so if it's re-added later, it's treated as a new addition
 	if is_instance_valid(node) and node.is_in_group("owdb"):
 		node.remove_from_group("owdb")
+
+func handle_node_rename(node: Node) -> bool:
+	if not node.has_meta("_owd_uid"):
+		return false
+	
+	var old_uid = node.get_meta("_owd_uid")
+	var new_name = node.name
+	
+	# Check if name is different from uid
+	if old_uid == new_name:
+		return false
+	
+	# Update node metadata
+	node.set_meta("_owd_uid", new_name)
+	
+	# Update stored nodes dictionary
+	if node_monitor.stored_nodes.has(old_uid):
+		var node_info = node_monitor.stored_nodes[old_uid]
+		node_info.uid = new_name
+		node_monitor.stored_nodes[new_name] = node_info
+		node_monitor.stored_nodes.erase(old_uid)
+	
+	# Update chunk lookup
+	for size in chunk_lookup:
+		for chunk_pos in chunk_lookup[size]:
+			var uid_list = chunk_lookup[size][chunk_pos]
+			var old_index = uid_list.find(old_uid)
+			if old_index >= 0:
+				uid_list[old_index] = new_name
+	
+	# Update parent references in children
+	for child_uid in node_monitor.stored_nodes:
+		var child_info = node_monitor.stored_nodes[child_uid]
+		if child_info.parent_uid == old_uid:
+			child_info.parent_uid = new_name
+	
+	return true
 
 func get_all_owd_nodes() -> Array[Node]:
 	return get_tree().get_nodes_in_group("owdb")

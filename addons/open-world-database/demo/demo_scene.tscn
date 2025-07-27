@@ -32,22 +32,25 @@ script = ExtResource("1_v2w8i")
 chunk_sizes = Array[float]([4.0, 8.0, 16.0])
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
 
-[node name="Node-1753651419403_2482" type="Node" parent="OpenWorldDatabase"]
-metadata/_owd_uid = "Node-1753651419403_2482"
+[node name="Environment" type="Node" parent="OpenWorldDatabase"]
+metadata/_owd_uid = "Environment"
 
-[node name="SmallBox-1753652352367_5466" type="Node3D" parent="OpenWorldDatabase/Node-1753651419403_2482" instance=ExtResource("2_aw7xk")]
+[node name="SmallBox-1753652352367_5466" type="Node3D" parent="OpenWorldDatabase/Environment" instance=ExtResource("2_aw7xk")]
 transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, -5.41436, 0, 4.54256)
 script = ExtResource("3_2ssfv")
+test = "woo 1"
 metadata/_owd_uid = "SmallBox-1753652352367_5466"
 metadata/_owd_last_scale = Vector3(5, 5, 5)
 metadata/_owd_last_size = 2.81775
 
-[node name="Node3D-175365140059_2169" type="Node3D" parent="OpenWorldDatabase"]
-metadata/_owd_uid = "Node3D-175365140059_2169"
+[node name="test1" type="Node3D" parent="OpenWorldDatabase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.861, 0, 5.97114)
+metadata/_owd_uid = "test1"
 metadata/_owd_last_scale = Vector3(1, 1, 1)
-metadata/_owd_last_size = 0.56355
+metadata/_owd_last_size = 0.563551
 
-[node name="SmallBox-1753652335508_7178" type="Node3D" parent="OpenWorldDatabase/Node3D-175365140059_2169" instance=ExtResource("2_aw7xk")]
+[node name="SmallBox-1753652335508_7178" type="Node3D" parent="OpenWorldDatabase/test1" instance=ExtResource("2_aw7xk")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.44893)
 script = ExtResource("3_2ssfv")
 metadata/_owd_uid = "SmallBox-1753652335508_7178"
 metadata/_owd_last_scale = Vector3(1, 1, 1)

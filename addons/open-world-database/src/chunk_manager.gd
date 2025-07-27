@@ -83,12 +83,15 @@ func _update_camera_chunks():
 			if not new_chunks.has(chunk_pos):
 				chunks_to_unload.append(chunk_pos)
 		
-		# Validate nodes only in chunks that are being unloaded
-		_validate_nodes_in_chunks(size, chunks_to_unload)
+		# Validate nodes and get additional nodes to unload
+		var additional_nodes_to_unload = _validate_nodes_in_chunks(size, chunks_to_unload, new_chunks)
 		
 		# Unload chunks
 		for chunk_pos in chunks_to_unload:
 			_unload_chunk(size, chunk_pos)
+		
+		# Unload additional nodes that moved to non-loaded chunks
+		_unload_additional_nodes(additional_nodes_to_unload)
 		
 		# Load chunks
 		for chunk_pos in new_chunks:
@@ -103,22 +106,28 @@ func _ensure_always_loaded_chunk():
 		_load_chunk(OpenWorldDatabase.Size.ALWAYS_LOADED, always_loaded_chunk)
 		loaded_chunks[OpenWorldDatabase.Size.ALWAYS_LOADED][always_loaded_chunk] = true
 
-func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check: Array):
+func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check: Array, currently_loading_chunks: Dictionary) -> Array:
+	var additional_nodes_to_unload = []
+	
 	if chunks_to_check.is_empty():
-		return
+		return additional_nodes_to_unload
 		
-	# Only process nodes in the specified chunks
 	for chunk_pos in chunks_to_check:
 		if not owdb.chunk_lookup.has(size_cat) or not owdb.chunk_lookup[size_cat].has(chunk_pos):
 			continue
 			
-		# Make a copy since we might modify the array
 		var node_uids = owdb.chunk_lookup[size_cat][chunk_pos].duplicate()
 		
 		for uid in node_uids:
 			var node = owdb.get_node_by_uid(uid)
 			if not node:
 				continue
+			
+			# Check for rename before updating stored node
+			owdb.handle_node_rename(node)
+			
+			# Update node properties
+			owdb.node_monitor.update_stored_node(node)
 			
 			# Check if node has moved or changed size
 			var node_size = NodeUtils.calculate_node_size(node)
@@ -133,11 +142,75 @@ func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check
 				if owdb.chunk_lookup[size_cat][chunk_pos].is_empty():
 					owdb.chunk_lookup[size_cat].erase(chunk_pos)
 				
-				# Add to new location
-				owdb.add_to_chunk_lookup(uid, node_position, node_size)
+				# Check if new chunk will be loaded
+				var new_chunk_will_be_loaded = _is_chunk_loaded_or_loading(current_size_cat, current_chunk, currently_loading_chunks)
 				
-				# Update stored node info
-				owdb.node_monitor.update_stored_node(node)
+				if new_chunk_will_be_loaded:
+					# Move node and all children to new chunks
+					_move_node_hierarchy_to_chunks(node)
+				else:
+					# New chunk is not loaded, mark node for unloading
+					additional_nodes_to_unload.append(node)
+	
+	return additional_nodes_to_unload
+
+func _is_chunk_loaded_or_loading(size_cat: OpenWorldDatabase.Size, chunk_pos: Vector2i, currently_loading_chunks: Dictionary) -> bool:
+	if size_cat == OpenWorldDatabase.Size.ALWAYS_LOADED:
+		return true
+	if currently_loading_chunks.has(chunk_pos):
+		return true
+	if loaded_chunks.has(size_cat) and loaded_chunks[size_cat].has(chunk_pos):
+		return true
+	return false
+
+func _move_node_hierarchy_to_chunks(node: Node):
+	# Recursively move node and all children to appropriate chunks
+	if node.has_meta("_owd_uid"):
+		var uid = node.get_meta("_owd_uid")
+		var node_size = NodeUtils.calculate_node_size(node)
+		var node_position = node.global_position if node is Node3D else Vector3.ZERO
+		
+		# Update stored node info and add to new chunk
+		owdb.node_monitor.update_stored_node(node)
+		owdb.add_to_chunk_lookup(uid, node_position, node_size)
+	
+	# Process children
+	for child in node.get_children():
+		if child.has_meta("_owd_uid"):
+			_move_node_hierarchy_to_chunks(child)
+
+func _unload_additional_nodes(nodes_to_unload: Array):
+	if nodes_to_unload.is_empty():
+		return
+	
+	# Collect all nodes in hierarchies before freeing any
+	var all_nodes_to_unload = []
+	for node in nodes_to_unload:
+		if is_instance_valid(node):
+			_collect_node_hierarchy(node, all_nodes_to_unload)
+	
+	owdb.is_loading = true
+	
+	# Check for renames and update stored data for all nodes before freeing
+	for node in all_nodes_to_unload:
+		if is_instance_valid(node):
+			owdb.handle_node_rename(node)
+			owdb.node_monitor.update_stored_node(node)
+	
+	# Free the top-level nodes (children will be freed automatically)
+	for node in nodes_to_unload:
+		if is_instance_valid(node):
+			node.free()
+	
+	owdb.is_loading = false
+
+func _collect_node_hierarchy(node: Node, collection: Array):
+	if node.has_meta("_owd_uid"):
+		collection.append(node)
+	
+	for child in node.get_children():
+		if child.has_meta("_owd_uid"):
+			_collect_node_hierarchy(child, collection)
 
 func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
@@ -203,18 +276,31 @@ func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
 		return
 	
-	owdb.is_loading = true
-	
-	# Make a copy since we'll be modifying the array
 	var uids_to_unload = owdb.chunk_lookup[size][chunk_pos].duplicate()
+	var nodes_to_unload = []
 	
+	# Collect all nodes before updating/freeing any
 	for uid in uids_to_unload:
 		var node = owdb.get_node_by_uid(uid)
 		if node:
-			# Update stored data before unloading
+			nodes_to_unload.append(node)
+	
+	# Collect all nodes in hierarchies
+	var all_nodes_to_unload = []
+	for node in nodes_to_unload:
+		_collect_node_hierarchy(node, all_nodes_to_unload)
+	
+	owdb.is_loading = true
+	
+	# Check for renames and update stored data for all nodes before freeing
+	for node in all_nodes_to_unload:
+		if is_instance_valid(node):
+			owdb.handle_node_rename(node)
 			owdb.node_monitor.update_stored_node(node)
+	
+	# Free the top-level nodes
+	for node in nodes_to_unload:
+		if is_instance_valid(node):
 			node.free()
-		else:
-			print("could not find node ", uid)
 	
 	owdb.is_loading = false

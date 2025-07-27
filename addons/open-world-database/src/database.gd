@@ -11,13 +11,11 @@ func _init(open_world_database: OpenWorldDatabase):
 func get_database_path() -> String:
 	var scene_path: String = ""
 	
-	# Check if we're in the editor
 	if Engine.is_editor_hint():
 		var edited_scene = EditorInterface.get_edited_scene_root()
 		if edited_scene:
 			scene_path = edited_scene.scene_file_path
 	else:
-		# We're in-game, get the current scene
 		var current_scene = owdb.get_tree().current_scene
 		if current_scene:
 			scene_path = current_scene.scene_file_path
@@ -27,25 +25,24 @@ func get_database_path() -> String:
 		
 	return scene_path.get_basename() + ".owdb"
 
-
 func save_database():
 	var db_path = get_database_path()
 	if db_path == "":
 		print("Error: Scene must be saved before saving database")
 		return
 	
-	# First, update all loaded nodes
+	# First, update all currently loaded nodes to catch any changes
 	var all_nodes = owdb.get_all_owd_nodes()
 	for node in all_nodes:
+		# Check for renames and update stored data
+		owdb.handle_node_rename(node)
 		owdb.node_monitor.update_stored_node(node)
 	
-	# Now save everything from stored_nodes
 	var file = FileAccess.open(db_path, FileAccess.WRITE)
 	if not file:
 		print("Error: Could not create database file")
 		return
 	
-	# Get top-level nodes
 	var top_level_uids = []
 	for uid in owdb.node_monitor.stored_nodes:
 		var info = owdb.node_monitor.stored_nodes[uid]
@@ -81,7 +78,6 @@ func _write_node_recursive(file: FileAccess, uid: String, depth: int):
 	
 	file.store_line(line)
 	
-	# Write children
 	var child_uids = []
 	for child_uid in owdb.node_monitor.stored_nodes:
 		var child_info = owdb.node_monitor.stored_nodes[child_uid]
@@ -121,7 +117,6 @@ func load_database():
 		if not info:
 			continue
 		
-		# Handle parent relationships
 		while depth_stack.size() > 0 and depth <= depth_stack[-1]:
 			node_stack.pop_back()
 			depth_stack.pop_back()
@@ -132,15 +127,12 @@ func load_database():
 		node_stack.append(info.uid)
 		depth_stack.append(depth)
 		
-		# Store node info
 		owdb.node_monitor.stored_nodes[info.uid] = info
-		
-		# Add to chunk lookup
 		owdb.add_to_chunk_lookup(info.uid, info.position, info.size)
 	
 	file.close()
-	print("")
-	print("Database loaded successfully!")
+	if owdb.debug_enabled:
+		print("Database loaded successfully!")
 
 func debug():
 	print("")
@@ -148,7 +140,7 @@ func debug():
 	print("")
 	print("chunked nodes ", owdb.chunk_lookup)
 	print("")
-	
+
 func _parse_line(line: String) -> Dictionary:
 	var parts = line.split("|")
 	if parts.size() < 6:
@@ -158,39 +150,32 @@ func _parse_line(line: String) -> Dictionary:
 		"uid": parts[0],
 		"scene": parts[1].strip_edges().trim_prefix("\"").trim_suffix("\""),
 		"parent_uid": "",
-		"properties": {}
+		"position": _parse_vector3(parts[2]),
+		"rotation": _parse_vector3(parts[3]),
+		"scale": _parse_vector3(parts[4]),
+		"size": parts[5].to_float(),
+		"properties": _parse_properties(parts[6] if parts.size() > 6 else "{}")
 	}
 	
-	# Parse position
-	var pos_parts = parts[2].split(",")
-	info.position = Vector3(
-		pos_parts[0].to_float(),
-		pos_parts[1].to_float(),
-		pos_parts[2].to_float()
-	)
-	
-	# Parse rotation
-	var rot_parts = parts[3].split(",")
-	info.rotation = Vector3(
-		rot_parts[0].to_float(),
-		rot_parts[1].to_float(),
-		rot_parts[2].to_float()
-	)
-	
-	# Parse scale
-	var scale_parts = parts[4].split(",")
-	info.scale = Vector3(
-		scale_parts[0].to_float(),
-		scale_parts[1].to_float(),
-		scale_parts[2].to_float()
-	)
-	
-	info.size = parts[5].to_float()
-	
-	# Parse properties
-	if parts.size() > 6 and parts[6] != "{}":
-		var json = JSON.new()
-		if json.parse(parts[6]) == OK:
-			info.properties = json.data
-	
 	return info
+
+func _parse_vector3(vector_str: String) -> Vector3:
+	var components = vector_str.split(",")
+	if components.size() != 3:
+		return Vector3.ZERO
+	
+	return Vector3(
+		components[0].to_float(),
+		components[1].to_float(),
+		components[2].to_float()
+	)
+
+func _parse_properties(props_str: String) -> Dictionary:
+	if props_str == "{}" or props_str == "":
+		return {}
+	
+	var json = JSON.new()
+	if json.parse(props_str) == OK:
+		return json.data
+	
+	return {}
