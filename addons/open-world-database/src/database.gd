@@ -139,7 +139,13 @@ func load_database():
 		owdb.add_to_chunk_lookup(info.uid, info.position, info.size)
 	
 	file.close()
+	print("")
 	print("Database loaded successfully!")
+	print("")
+	print("stored nodes  ", owdb.node_monitor.stored_nodes)
+	print("")
+	print("chunked nodes ", owdb.chunk_lookup)
+	print("")
 
 func _parse_line(line: String) -> Dictionary:
 	var parts = line.split("|")

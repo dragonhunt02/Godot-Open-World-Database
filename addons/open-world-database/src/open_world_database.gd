@@ -5,19 +5,14 @@ class_name OpenWorldDatabase
 
 enum Size { SMALL, MEDIUM, LARGE, HUGE }
 
+@export_tool_button("DEBUG", "save") var debug_action = debug
 @export_tool_button("Save World Database", "save") var save_action = save_database
-
 @export var size_thresholds: Array[float] = [0.5, 2.0, 8.0]
 @export var chunk_sizes: Array[float] = [8.0, 16.0, 64.0]
 @export var chunk_load_range: int = 3
 @export var debug_enabled: bool = false
 @export var camera: Node
 
-"""
-@export_tool_button("Load Database", "load") var load_action = load_database
-@export_tool_button("Reset", "save") var reset_action = reset
-#@export_tool_button("TEST", "save") var test_action = test
-"""
 var chunk_lookup: Dictionary = {} # [Size][Vector2i] -> Array[String] (UIDs)
 var database: Database
 var chunk_manager: ChunkManager
@@ -42,7 +37,7 @@ func reset():
 	database = Database.new(self)
 	setup_listeners(self)
 	is_loading = false
-	
+
 func setup_listeners(node: Node):
 	if not node.child_entered_tree.is_connected(_on_child_entered_tree):
 		node.child_entered_tree.connect(_on_child_entered_tree)
@@ -50,12 +45,45 @@ func setup_listeners(node: Node):
 	if not node.child_exiting_tree.is_connected(_on_child_exiting_tree):
 		node.child_exiting_tree.connect(_on_child_exiting_tree)
 
-
 func _on_child_entered_tree(node: Node):
+	if !self.is_ancestor_of(node): # ignore this node if not a child of owdb
+		return
+		
+	if node.is_in_group("owdb_ignore"): # ignore scene child nodes
+		return
+	
+	var children = node.get_children()
+	for child in children:
+		if !child.is_in_group("owdb"):
+			child.add_to_group("owdb_ignore")
+	
+	# Setup listeners for this node after its children are added
 	call_deferred("setup_listeners", node)
 	
-	if is_loading or node.scene_file_path == "" or !self.is_ancestor_of(node):
+	if is_loading:
+		node.add_to_group("owdb")
 		return
+	
+	# Check if this is a move operation (node already in owdb group)
+	if node.is_in_group("owdb"):
+		print("NODE MOVED: ", node.name)
+		# Update node monitor for moved nodes
+		if node is Node3D:
+			node_monitor.update_stored_node(node)
+			# Update chunk lookup for moved nodes
+			var uid = node.get_meta("_owd_uid", "")
+			if uid != "":
+				var node_size = NodeUtils.calculate_node_size(node)
+				# Remove from old position and add to new position
+				if node_monitor.stored_nodes.has(uid):
+					var old_info = node_monitor.stored_nodes[uid]
+					remove_from_chunk_lookup(uid, old_info.position, old_info.size)
+				add_to_chunk_lookup(uid, node.global_position, node_size)
+		return
+	
+	# This is a new node being added
+	node.add_to_group("owdb")
+	print("NODE ADDED: ", node.name)
 	
 	# Only set UID if node doesn't have one
 	if not node.has_meta("_owd_uid"):
@@ -65,14 +93,14 @@ func _on_child_entered_tree(node: Node):
 	
 	var uid = node.get_meta("_owd_uid")
 	
-	# Check if another node exists anywhere under self with this UID as its name
-	var existing_node = find_node_with_uid(uid, node)
-	if existing_node != null:
+	# Check if another node exists with this UID
+	var existing_node = get_node_by_uid(uid)
+	if existing_node != null and existing_node != node:
 		# Generate a new UID for this node
 		var new_uid = node.name.split('-')[0] + '-' + NodeUtils.generate_uid()
 		node.set_meta("_owd_uid", new_uid)
 		node.name = new_uid
-		
+		uid = new_uid
 		
 	if node is Node3D:
 		# Update node monitor
@@ -81,50 +109,56 @@ func _on_child_entered_tree(node: Node):
 		# Add to chunk lookup
 		var node_size = NodeUtils.calculate_node_size(node)
 		add_to_chunk_lookup(uid, node.global_position, node_size)
-
-# Helper function to find if a node with the given UID exists (excluding the current node)
-func find_node_with_uid(uid: String, exclude_node: Node) -> Node:
-	return _search_for_uid_recursive(self, uid, exclude_node)
-
-func _search_for_uid_recursive(parent: Node, uid: String, exclude_node: Node) -> Node:
-	for child in parent.get_children():
-		if child != exclude_node and child.name == uid:
-			return child
-		
-		var found = _search_for_uid_recursive(child, uid, exclude_node)
-		if found != null:
-			return found
 	
-	return null
+	if debug_enabled:
+		print(get_tree().get_nodes_in_group("owdb"))
 
 func _on_child_exiting_tree(node: Node):
-	if is_loading or node.scene_file_path == "":
+	if is_loading:
 		return
 	
-	# Just mark for later processing
-	if node.has_meta("_owd_uid"):
-		call_deferred("_check_node_removal", node)
-
-func _check_node_removal(node):
-	# If node is still valid and in tree, it was reparented
-	if is_instance_valid(node) and node.is_inside_tree():
+	if !node.is_in_group("owdb"):
 		return
+	
+	# Use call_deferred to check if this is a move or actual removal
+	call_deferred("_check_node_removal", node)
 
-func get_all_owd_nodes(parent: Node = self) -> Array[Node]:
-	var nodes: Array[Node] = []
-	for child in parent.get_children():
-		if child.has_meta("_owd_uid"):
-		#if parent.is_editable_instance(child):
-			nodes.append(child)
-		nodes.append_array(get_all_owd_nodes(child))
-	return nodes
+func _check_node_removal(node: Node):
+	# If node is still valid and in tree, it was moved within the owdb tree
+	if is_instance_valid(node) and node.is_inside_tree() and self.is_ancestor_of(node):
+		# This was handled in _on_child_entered_tree as a move
+		return
+	
+	# Node was actually removed from the owdb tree
+	print("NODE REMOVED: ", node.name if is_instance_valid(node) else "Unknown")
+	
+	# Clean up stored data
+	if is_instance_valid(node) and node.has_meta("_owd_uid"):
+		var uid = node.get_meta("_owd_uid")
+		if node_monitor.stored_nodes.has(uid):
+			var node_info = node_monitor.stored_nodes[uid]
+			# Remove from chunk lookup
+			remove_from_chunk_lookup(uid, node_info.position, node_info.size)
+			# Remove from stored nodes
+			node_monitor.stored_nodes.erase(uid)
+			
+			if debug_enabled:
+				print("Removed node from storage: ", uid)
+	
+	# Remove from owdb group so if it's re-added later, it's treated as a new addition
+	if is_instance_valid(node) and node.is_in_group("owdb"):
+		node.remove_from_group("owdb")
+
+func get_all_owd_nodes() -> Array[Node]:
+	return get_tree().get_nodes_in_group("owdb")
 
 func get_node_by_uid(uid: String) -> Node:
-	var found = get_node(uid)
-	if found:
-		return found
-	else:
-		return find_child("*" + uid, true, false)
+	# Search through owdb group nodes for matching UID
+	var owdb_nodes = get_tree().get_nodes_in_group("owdb")
+	for node in owdb_nodes:
+		if node.has_meta("_owd_uid") and node.get_meta("_owd_uid") == uid:
+			return node
+	return null
 
 func add_to_chunk_lookup(uid: String, position: Vector3, size: float):
 	var size_cat = get_size_category(size)
@@ -163,6 +197,12 @@ func _process(_delta: float) -> void:
 	if chunk_manager and not is_loading:
 		chunk_manager._update_camera_chunks()
 
+func debug():
+	var owdb_nodes = get_all_owd_nodes()
+	print("OWD Nodes in group: ", owdb_nodes.size())
+	for node in owdb_nodes:
+		print("  - ", node.get_meta("_owd_uid", "NO_UID"), " : ", node.name)
+	
 func save_database():
 	database.save_database()
 
@@ -174,8 +214,5 @@ func load_database():
 
 func _notification(what: int) -> void:
 	if Engine.is_editor_hint():
-		#if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		#	save_database()
-		#	get_tree().quit()
 		if what == NOTIFICATION_EDITOR_PRE_SAVE:
 			save_database()

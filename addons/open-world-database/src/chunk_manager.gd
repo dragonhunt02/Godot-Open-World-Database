@@ -16,7 +16,6 @@ func reset():
 		loaded_chunks[size] = {}
 
 func _get_camera() -> Node3D:
-	
 	if Engine.is_editor_hint():
 		var viewport = EditorInterface.get_editor_viewport_3d(0)
 		if viewport:
@@ -24,10 +23,8 @@ func _get_camera() -> Node3D:
 			
 	if owdb.camera and owdb.camera is Node3D:
 		return owdb.camera
-
 	
 	owdb.camera = _find_visible_camera3d(owdb.get_tree().root)
-	
 	return owdb.camera
 	
 func _find_visible_camera3d(node: Node) -> Camera3D:
@@ -127,11 +124,6 @@ func _validate_nodes_in_chunks(size_cat: OpenWorldDatabase.Size, chunks_to_check
 				# Update stored node info
 				owdb.node_monitor.update_stored_node(node)
 
-func _is_node_in_chunk_lookup(uid: String, size_cat: OpenWorldDatabase.Size, chunk_pos: Vector2i) -> bool:
-	return owdb.chunk_lookup.has(size_cat) and \
-		   owdb.chunk_lookup[size_cat].has(chunk_pos) and \
-		   uid in owdb.chunk_lookup[size_cat][chunk_pos]
-
 func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
 		return
@@ -140,22 +132,17 @@ func _load_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	
 	var node_infos = owdb.node_monitor.get_nodes_for_chunk(size, chunk_pos)
 	
-	# Sort by hierarchy level (parents first)
-	#node_infos.sort_custom(func(a, b): return a.parent_uid.length() < b.parent_uid.length())
-	
 	for info in node_infos:
-		#if not owdb.get_node_by_uid(info.uid):
 		_load_node(info)
-		#else:
-		#	print("node already loaded")
 	
 	owdb.is_loading = false
 
 func _load_node(node_info: Dictionary):
-	var scene = ResourceLoader.load(node_info.scene, "", ResourceLoader.CACHE_MODE_REUSE) #load(node_info.scene)
+	var scene = ResourceLoader.load(node_info.scene, "", ResourceLoader.CACHE_MODE_REUSE)
 	var instance = scene.instantiate()
 	instance.set_meta("_owd_uid", node_info.uid)
 	instance.name = node_info.uid
+	
 	# Find parent
 	var parent_node = null
 	if node_info.parent_uid != "":
@@ -164,6 +151,7 @@ func _load_node(node_info: Dictionary):
 	# Add to parent or owdb
 	if parent_node:
 		parent_node.add_child(instance)
+		owdb._on_child_entered_tree(instance)
 	else:
 		owdb.add_child(instance)
 	
@@ -177,17 +165,6 @@ func _load_node(node_info: Dictionary):
 	for prop_name in node_info.properties:
 		if prop_name not in ["position", "rotation", "scale", "size"]:
 			instance.set(prop_name, node_info.properties[prop_name])
-	
-	"""
-	# Check for orphaned children and reparent them
-	for child in owdb.get_children():
-		if child.has_meta("_owd_uid") and child != instance:
-			var child_parent_uid = owdb.node_monitor.stored_nodes.get(
-				child.get_meta("_owd_uid"), {}
-			).get("parent_uid", "")
-			if child_parent_uid == node_info.uid:
-				child.reparent(instance)
-	"""
 	
 func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	if not owdb.chunk_lookup.has(size) or not owdb.chunk_lookup[size].has(chunk_pos):
@@ -204,5 +181,7 @@ func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 			# Update stored data before unloading
 			owdb.node_monitor.update_stored_node(node)
 			node.free()
+		else:
+			print("could not find node ", uid)
 	
 	owdb.is_loading = false
