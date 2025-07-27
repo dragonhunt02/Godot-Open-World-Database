@@ -5,7 +5,7 @@ class_name NodeMonitor
 
 var owdb: OpenWorldDatabase
 var stored_nodes: Dictionary = {} # uid -> node info
-var baseline_props :Array = []
+var baseline_props: Array = []
 
 func _init(open_world_database: OpenWorldDatabase):
 	owdb = open_world_database
@@ -20,17 +20,23 @@ func _init(open_world_database: OpenWorldDatabase):
 	baseline_props.append("metadata/_owd_last_size")
 	baseline_node.free()
 	
-func create_node_info(node: Node3D) -> Dictionary:
+func create_node_info(node: Node) -> Dictionary:
 	var info = {
 		"uid": node.get_meta("_owd_uid", ""),
-		"scene": node.scene_file_path,
-		"position": node.global_position,
-		"rotation": node.global_rotation,
-		"scale": node.scale,
+		"scene": _get_node_source(node),
+		"position": Vector3.ZERO,
+		"rotation": Vector3.ZERO,
+		"scale": Vector3.ONE,
 		"size": NodeUtils.calculate_node_size(node),
 		"parent_uid": "",
 		"properties": {}
 	}
+	
+	# Only set 3D properties if node is Node3D
+	if node is Node3D:
+		info.position = node.global_position
+		info.rotation = node.global_rotation
+		info.scale = node.scale
 	
 	# Get parent UID
 	var parent = node.get_parent()
@@ -44,12 +50,19 @@ func create_node_info(node: Node3D) -> Dictionary:
 	
 	return info
 
-func update_stored_node(node: Node3D):
+func _get_node_source(node: Node) -> String:
+	# If node has scene_file_path, use it (instantiated from scene)
+	if node.scene_file_path != "":
+		return node.scene_file_path
+	# Otherwise, use the class name (created from script/built-in type)
+	return node.get_class()
+
+func update_stored_node(node: Node):
 	var uid = node.get_meta("_owd_uid", "")
 	if uid:
 		stored_nodes[uid] = create_node_info(node)
 
-func store_node_hierarchy(node: Node3D):
+func store_node_hierarchy(node: Node):
 	update_stored_node(node)
 	for child in node.get_children():
 		if child.has_meta("_owd_uid"):

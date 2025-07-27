@@ -68,9 +68,9 @@ func _on_child_entered_tree(node: Node):
 	if node.is_in_group("owdb"):
 		print("NODE MOVED: ", node.name)
 		# Update node monitor for moved nodes
+		node_monitor.update_stored_node(node)
+		# Update chunk lookup for moved nodes (only for Node3D)
 		if node is Node3D:
-			node_monitor.update_stored_node(node)
-			# Update chunk lookup for moved nodes
 			var uid = node.get_meta("_owd_uid", "")
 			if uid != "":
 				var node_size = NodeUtils.calculate_node_size(node)
@@ -102,16 +102,17 @@ func _on_child_entered_tree(node: Node):
 		node.name = new_uid
 		uid = new_uid
 		
+	# Update node monitor
+	node_monitor.update_stored_node(node)
+	
+	# Add to chunk lookup (only for Node3D)
 	if node is Node3D:
-		# Update node monitor
-		node_monitor.update_stored_node(node)
-		
-		# Add to chunk lookup
 		var node_size = NodeUtils.calculate_node_size(node)
 		add_to_chunk_lookup(uid, node.global_position, node_size)
 	
 	if debug_enabled:
 		print(get_tree().get_nodes_in_group("owdb"))
+
 
 func _on_child_exiting_tree(node: Node):
 	if is_loading:

@@ -8,7 +8,6 @@ static func remove_children(node:Node):
 	for child in children:
 		child.free()
 
-
 static func generate_uid() -> String:
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
@@ -27,30 +26,35 @@ static func get_node_aabb(node: Node, exclude_top_level_transform: bool = true) 
 		else:
 			bounds = bounds.merge(child_bounds)
 
-	if not exclude_top_level_transform:
+	if not exclude_top_level_transform and node is Node3D:
 		bounds = node.transform * bounds
 
 	return bounds
 
-static func calculate_node_size(node: Node3D) -> float:
+static func calculate_node_size(node: Node) -> float:
+	# Non-3D nodes have no size
+	if not node is Node3D:
+		return 0.0
+	
+	var node_3d = node as Node3D
+	
 	# Check if we have cached values
-	if node.has_meta("_owd_last_scale"):
+	if node_3d.has_meta("_owd_last_scale"):
 		# If scale hasn't changed, return cached size
-		var meta = node.get_meta("_owd_last_scale")
-		if node.scale == meta:
-			return node.get_meta("_owd_last_size")
+		var meta = node_3d.get_meta("_owd_last_scale")
+		if node_3d.scale == meta:
+			return node_3d.get_meta("_owd_last_size")
 	
 	# Calculate new size
-	var aabb = get_node_aabb(node, false)
+	var aabb = get_node_aabb(node_3d, false)
 	var size = aabb.size
 	var max_size = max(size.x, max(size.y, size.z))
 	
 	# Cache the scale and size
-	node.set_meta("_owd_last_scale", node.scale)
-	node.set_meta("_owd_last_size", max_size)
+	node_3d.set_meta("_owd_last_scale", node_3d.scale)
+	node_3d.set_meta("_owd_last_size", max_size)
 	
 	return max_size
-
 
 static func is_top_level_node(node: Node) -> bool:
 	var parent_node = node.get_parent()
