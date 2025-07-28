@@ -5,7 +5,7 @@ class_name OpenWorldDatabase
 
 enum Size { SMALL, MEDIUM, LARGE, ALWAYS_LOADED }
 
-#@export_tool_button("DEBUG", "save") var debug_action = debug
+@export_tool_button("DEBUG", "save") var debug_action = debug
 #@export_tool_button("Save World Database", "save") var save_action = save_database
 @export var size_thresholds: Array[float] = [0.5, 2.0, 8.0]
 @export var chunk_sizes: Array[float] = [8.0, 16.0, 64.0]

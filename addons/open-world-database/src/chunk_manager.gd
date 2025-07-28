@@ -266,7 +266,10 @@ func _load_node(node_info: Dictionary):
 	for prop_name in node_info.properties:
 		if prop_name not in ["position", "rotation", "scale", "size"]:
 			if instance.has_method("set") and prop_name in instance:
-				instance.set(prop_name, node_info.properties[prop_name])
+				var stored_value = node_info.properties[prop_name]
+				var current_value = instance.get(prop_name)
+				var converted_value = NodeUtils.convert_property_value(stored_value, current_value)
+				instance.set(prop_name, converted_value)
 	
 func _unload_chunk(size: OpenWorldDatabase.Size, chunk_pos: Vector2i):
 	# Never unload ALWAYS_LOADED chunks

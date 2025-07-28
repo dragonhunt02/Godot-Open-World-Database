@@ -42,7 +42,7 @@ $OpenWorldDatabase.chunk_load_range = 5  # Load 5 chunks in each direction
 
 ## How It Works
 
-The addon monitors all nodes with scene files under the OWDB node, categorizing them by size:
+The addon monitors all nodes with scene files under the OWDB node, categorizing them by size (defaults shown but these can all be changed):
 - **Small** (≤0.5 units): Fine-grained 8x8 unit chunks
 - **Medium** (≤2.0 units): 16x16 unit chunks  
 - **Large** (≤8.0 units): 64x64 unit chunks
@@ -69,20 +69,6 @@ The `OpenWorldDatabase` node exposes several configuration options:
 - **Child OWDB Support**: Nested OWDB nodes for complex scenes (e.g., furniture within buildings that can be independently chunked)
 - **Async Loading**: Background loading to eliminate hitches
 - **Compression**: Optional compression for `.owdb` files
-- **Streaming Optimization**: Predictive loading based on movement direction
-- **Multi-threading**: Parallel chunk processing for better performance
-
-## Performance Benefits
-
-Before OWDB:
-- 10,000 nodes = 10,000 nodes in memory always
-- Frame rate drops with scene complexity
-- Memory usage grows linearly with world size
-
-After OWDB:
-- 10,000 nodes = ~100-500 nodes in memory (depending on chunk range)
-- Consistent frame rates regardless of world size
-- Memory usage stays constant based on loaded area
 
 ## Contributing
 

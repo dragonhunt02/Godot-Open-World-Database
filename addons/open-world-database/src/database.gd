@@ -31,12 +31,36 @@ func save_database():
 		print("Error: Scene must be saved before saving database")
 		return
 	
-	# First, update all currently loaded nodes to catch any changes
+	# First, update all currently loaded nodes and handle size/position changes
 	var all_nodes = owdb.get_all_owd_nodes()
 	for node in all_nodes:
-		# Check for renames and update stored data
+		# Check for renames
 		owdb.handle_node_rename(node)
-		owdb.node_monitor.update_stored_node(node)
+		
+		var uid = node.get_meta("_owd_uid", "")
+		if uid == "":
+			continue
+			
+		# Get old info for comparison
+		var old_info = owdb.node_monitor.stored_nodes.get(uid, {})
+		
+		# Update stored node with forced size recalculation
+		owdb.node_monitor.update_stored_node(node, true)
+		
+		# Check if node needs to be moved to different chunk
+		if old_info.has("position") and old_info.has("size"):
+			var new_info = owdb.node_monitor.stored_nodes[uid]
+			var old_pos = old_info.position
+			var old_size = old_info.size
+			var new_pos = new_info.position
+			var new_size = new_info.size
+			
+			# Check if position or size changed enough to warrant chunk reallocation
+			if old_pos.distance_to(new_pos) > 0.01 or abs(old_size - new_size) > 0.01:
+				# Remove from old chunk
+				owdb.remove_from_chunk_lookup(uid, old_pos, old_size)
+				# Add to new chunk
+				owdb.add_to_chunk_lookup(uid, new_pos, new_size)
 	
 	var file = FileAccess.open(db_path, FileAccess.WRITE)
 	if not file:
