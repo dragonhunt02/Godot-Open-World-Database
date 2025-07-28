@@ -160,9 +160,9 @@ func load_database():
 
 func debug():
 	print("")
-	print("stored nodes  ", owdb.node_monitor.stored_nodes)
+	print("All known nodes  ", owdb.node_monitor.stored_nodes)
 	print("")
-	print("chunked nodes ", owdb.chunk_lookup)
+	print("Chunked nodes ", owdb.chunk_lookup)
 	print("")
 
 func _parse_line(line: String) -> Dictionary:

@@ -5,13 +5,15 @@ class_name OpenWorldDatabase
 
 enum Size { SMALL, MEDIUM, LARGE, ALWAYS_LOADED }
 
-@export_tool_button("DEBUG", "save") var debug_action = debug
+
 #@export_tool_button("Save World Database", "save") var save_action = save_database
 @export var size_thresholds: Array[float] = [0.5, 2.0, 8.0]
 @export var chunk_sizes: Array[float] = [8.0, 16.0, 64.0]
 @export var chunk_load_range: int = 3
 @export var debug_enabled: bool = false
 @export var camera: Node
+
+@export_tool_button("debug info", "Debug") var debug_action = debug
 
 var chunk_lookup: Dictionary = {} # [Size][Vector2i] -> Array[String] (UIDs)
 var database: Database
@@ -69,7 +71,8 @@ func _on_child_entered_tree(node: Node):
 	
 	# Check if this is a move operation (node already in owdb group)
 	if node.is_in_group("owdb"):
-		print("NODE MOVED: ", node.name)
+		if debug_enabled:
+			print("NODE MOVED: ", node.name)
 		# Update node monitor for moved nodes
 		node_monitor.update_stored_node(node)
 		# Update chunk lookup for moved nodes
@@ -85,7 +88,8 @@ func _on_child_entered_tree(node: Node):
 	
 	# This is a new node being added
 	node.add_to_group("owdb")
-	print("NODE ADDED: ", node.name)
+	if debug_enabled:
+			print("NODE ADDED: ", node.name)
 	
 	# Only set UID if node doesn't have one
 	if not node.has_meta("_owd_uid"):
@@ -131,7 +135,8 @@ func _check_node_removal(node: Node):
 		return
 	
 	# Node was actually removed from the owdb tree
-	print("NODE REMOVED: ", node.name if is_instance_valid(node) else "Unknown")
+	if debug_enabled:
+		print("NODE REMOVED: ", node.name if is_instance_valid(node) else "Unknown")
 	
 	# Clean up stored data
 	if is_instance_valid(node) and node.has_meta("_owd_uid"):
@@ -245,7 +250,7 @@ func _process(_delta: float) -> void:
 
 func debug():
 	var owdb_nodes = get_all_owd_nodes()
-	print("OWD Nodes in group: ", owdb_nodes.size())
+	print("OWDB nodes loaded: ", owdb_nodes.size())
 	for node in owdb_nodes:
 		print("  - ", node.get_meta("_owd_uid", "NO_UID"), " : ", node.name)
 	database.debug()

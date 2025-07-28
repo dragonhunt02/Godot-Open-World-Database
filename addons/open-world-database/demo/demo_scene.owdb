@@ -1,3 +1,3 @@
 Environment|"Node"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.0|{}
-	OmniLight3D-1753657264888_9773|"OmniLight3D"|0.0,0.54394686222076,0.0|0.0,0.0,0.0|1.0,1.0,1.0|1.0|{"light_color":"(0.1, 0.4, 0.8, 1.0)","light_energy":5.0,"omni_range":0.5}
-	SmallBox-1753657243578_2687|"res://addons/open-world-database/demo/small_box.tscn"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.56354999542236|{"test":"woo 1"}
+	SmallBox-175366569457_7720|"res://addons/open-world-database/demo/small_box.tscn"|0.0,0.0,0.0|0.0,0.0,0.0|1.0,1.0,1.0|0.56354999542236|{"test":"Change me"}
+	SmallBox-1753665706096_8678|"res://addons/open-world-database/demo/small_box.tscn"|-7.18008518218994,0.0,0.0|0.0,0.0,0.0|10.0,10.0,10.0|5.63549995422363|{"test":"Change me"}

@@ -1,8 +1,8 @@
 [gd_scene load_steps=8 format=3 uid="uid://bjfrcs1obghq6"]
 
-[ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_v2w8i"]
-[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_g323s"]
-[ext_resource type="Script" uid="uid://dampo4awcnnfn" path="res://addons/open-world-database/demo/small_box.gd" id="3_aw7xk"]
+[ext_resource type="Script" uid="uid://b46e3mat8dx5" path="res://addons/open-world-database/src/open_world_database.gd" id="1_aw7xk"]
+[ext_resource type="PackedScene" uid="uid://cnlgfasqpoub2" path="res://addons/open-world-database/demo/small_box.tscn" id="2_2ssfv"]
+[ext_resource type="Script" uid="uid://dampo4awcnnfn" path="res://addons/open-world-database/demo/small_box.gd" id="3_tejrk"]
 [ext_resource type="Script" uid="uid://6sdiubxiyam5" path="res://addons/open-world-database/demo/camera_3d.gd" id="4_aw7xk"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_aw7xk"]
@@ -24,32 +24,29 @@ glow_enabled = true
 
 [node name="DemoScene" type="Node3D"]
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_tejrk")
-
 [node name="OpenWorldDatabase" type="Node" parent="."]
-script = ExtResource("1_v2w8i")
+script = ExtResource("1_aw7xk")
 chunk_sizes = Array[float]([4.0, 8.0, 16.0])
 metadata/_custom_type_script = "uid://b46e3mat8dx5"
 
 [node name="Environment" type="Node" parent="OpenWorldDatabase"]
-metadata/_owd_uid = &"Environment"
+metadata/_owd_uid = "Environment"
 
-[node name="SmallBox-1753657243578_2687" type="Node3D" parent="OpenWorldDatabase/Environment" instance=ExtResource("2_g323s")]
-script = ExtResource("3_aw7xk")
-test = "woo 1"
-metadata/_owd_uid = "SmallBox-1753657243578_2687"
+[node name="SmallBox-1753665706096_8678" type="Node3D" parent="OpenWorldDatabase/Environment" instance=ExtResource("2_2ssfv")]
+transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 10, -7.18009, 0, 0)
+script = ExtResource("3_tejrk")
+metadata/_owd_uid = "SmallBox-1753665706096_8678"
+metadata/_owd_last_scale = Vector3(10, 10, 10)
+metadata/_owd_last_size = 5.6355
+
+[node name="SmallBox-175366569457_7720" type="Node3D" parent="OpenWorldDatabase/Environment" instance=ExtResource("2_2ssfv")]
+script = ExtResource("3_tejrk")
+metadata/_owd_uid = "SmallBox-175366569457_7720"
 metadata/_owd_last_scale = Vector3(1, 1, 1)
 metadata/_owd_last_size = 0.56355
 
-[node name="OmniLight3D-1753657264888_9773" type="OmniLight3D" parent="OpenWorldDatabase/Environment"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.543947, 0)
-light_color = Color(0.1, 0.4, 0.8, 1)
-light_energy = 5.0
-omni_range = 0.5
-metadata/_owd_uid = "OmniLight3D-1753657264888_9773"
-metadata/_owd_last_scale = Vector3(1, 1, 1)
-metadata/_owd_last_size = 1.0
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_tejrk")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.12559, 0)
