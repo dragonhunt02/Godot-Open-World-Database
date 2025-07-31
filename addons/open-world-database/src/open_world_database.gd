@@ -215,6 +215,22 @@ func add_to_chunk_lookup(uid: String, position: Vector3, size: float):
 	if uid not in chunk_lookup[size_cat][chunk_pos]:
 		chunk_lookup[size_cat][chunk_pos].append(uid)
 
+func add_node_to_owdb(node: Node) -> Dictionary:
+	is_loading = true
+	# Set parent to self
+	node_parent = node.get_parent()
+	if node_parent:
+		node_parent.remove_child(node)
+	add_child(node)
+
+	# Should be called as callback
+	#_on_child_entered_tree(node)
+
+	#node_monitor.stored_nodes[info.uid] = info
+	#add_to_chunk_lookup(uid, position, size)
+
+	is_loading = false	
+
 func remove_from_chunk_lookup(uid: String, position: Vector3, size: float):
 	var size_cat = get_size_category(size)
 	var chunk_pos = get_chunk_position(position, size_cat)
