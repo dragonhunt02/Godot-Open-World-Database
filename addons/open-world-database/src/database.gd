@@ -115,6 +115,7 @@ func _write_node_recursive(file: FileAccess, uid: String, depth: int):
 func load_database():
 	var db_path = get_database_path()
 	if db_path == "" or not FileAccess.file_exists(db_path):
+		push_error("Database path not found")
 		return
 	
 	var file = FileAccess.open(db_path, FileAccess.READ)
